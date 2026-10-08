@@ -365,6 +365,7 @@ if ($embed) {
 $sec = \App\SecurityAudit::report();
 $updFeature = \App\Modules\ModuleManager::featureActive('update-check');
 $upd = $updFeature ? \App\UpdateChecker::status() : null;
+$selfUpdate = $updFeature ? \App\SelfUpdater::available() : false;
 
 View::header('Настройки');
 ?>
@@ -430,6 +431,16 @@ View::header('Настройки');
       <div class="flash error" id="upd-error" <?= $upd['error'] ? '' : 'hidden' ?>><?= htmlspecialchars((string) $upd['error']) ?></div>
     </form>
     <p class="muted" style="margin:12px 0 0;font-size:12px"><?= htmlspecialchars(t('settings.updates.apply_note')) ?></p>
+
+    <?php if ($selfUpdate): ?>
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+      <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="secondary" id="btn-self-update"><?= htmlspecialchars(t('settings.updates.self_update')) ?></button>
+        <span class="muted" style="font-size:12px"><?= htmlspecialchars(t('settings.updates.self_update_hint')) ?></span>
+      </div>
+      <pre id="upd-log" hidden style="margin-top:10px;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;white-space:pre-wrap"></pre>
+    </div>
+    <?php endif; ?>
   </div>
 
   <script>
@@ -474,6 +485,40 @@ View::header('Настройки');
         btn.disabled = false; btn.textContent = orig;
       }
     });
+
+    // Самообновление кода из репозитория.
+    var sbtn = document.getElementById('btn-self-update');
+    if (sbtn) {
+      sbtn.addEventListener('click', async function () {
+        if (!confirm(<?= json_encode(t('settings.updates.self_update_confirm'), JSON_UNESCAPED_UNICODE) ?>)) return;
+        var pre = document.getElementById('upd-log');
+        var csrfEl = document.querySelector('#updates input[name=csrf_token]');
+        sbtn.disabled = true;
+        var orig = sbtn.textContent;
+        sbtn.textContent = '…';
+        pre.hidden = false;
+        pre.textContent = <?= json_encode(t('settings.updates.self_update_running'), JSON_UNESCAPED_UNICODE) ?>;
+        try {
+          var r = await fetch('/api/updates.php?action=self_update', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': (csrfEl ? csrfEl.value : '') }
+          });
+          var d = await r.json();
+          var lines = (d.log || []);
+          if (d.error && lines.indexOf(d.error) === -1) lines = lines.concat(['— ' + d.error]);
+          pre.textContent = lines.join('\n');
+          if (d.ok) {
+            pre.textContent += '\n\n' + <?= json_encode('✅ ', JSON_UNESCAPED_UNICODE) ?> + (d.from + ' → ' + d.to) + '. '
+              + <?= json_encode(t('settings.updates.self_update_done'), JSON_UNESCAPED_UNICODE) ?>;
+            setTimeout(function () { location.reload(); }, 2500);
+          }
+        } catch (e) {
+          pre.textContent = String(e);
+        } finally {
+          sbtn.disabled = false; sbtn.textContent = orig;
+        }
+      });
+    }
   })();
   </script>
   <?php endif; // feature-update-check ?>
