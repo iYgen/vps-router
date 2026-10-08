@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="VPS Router — панель маршрутизации трафика на sing-box: визуальный граф, выборочные exit, экспорт в Keenetic/MikroTik/OpenWrt.">
+<style>html{color-scheme:dark}body{margin:0}img{max-width:100%;height:auto}[hidden]{display:none!important}</style>
+<title>VPS Router</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+  :root{
+    --bg:#101014; --bg2:#14141a; --surface:#1b1b22; --surface2:#24242d;
+    --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.15);
+    --text:#f4f4f7; --muted:#9b9baa; --faint:#71717f;
+    --pink:#ff4f87; --purple:#8b7cff; --green:#35d07f; --amber:#f5b942;
+    --grad:linear-gradient(135deg,#ff4f87 0%,#8b7cff 100%);
+    --radius:16px;
+    --disp:"Sora",system-ui,sans-serif;
+    --body:"Inter",system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--body);
+    font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(60rem 40rem at 78% -8%, rgba(139,124,255,.14), transparent 60%),
+      radial-gradient(52rem 34rem at 6% 2%, rgba(255,79,135,.12), transparent 55%);
+    background-attachment:fixed;
+  }
+  .wrap{max-width:1120px; margin-inline:auto; padding-inline:22px}
+  a{color:inherit; text-decoration:none}
+  h1,h2,h3{font-family:var(--disp); font-weight:700; letter-spacing:-.02em; text-wrap:balance; margin:0}
+  p{margin:0}
+  .eyebrow{font-family:var(--mono); font-weight:600; font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--purple)}
+  .muted{color:var(--muted)}
+  .grad-text{background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent}
+
+  /* ---- nav ---- */
+  header.nav{position:sticky; top:env(safe-area-inset-top,0px); z-index:50;
+    backdrop-filter:blur(12px); background:rgba(16,16,20,.72); border-bottom:1px solid var(--line)}
+  .nav-in{display:flex; align-items:center; gap:18px; height:62px}
+  .nav-links{display:flex; gap:22px; margin-left:auto; font-size:14.5px; color:var(--muted)}
+  .nav-links a:hover{color:var(--text)}
+  .btn{display:inline-flex; align-items:center; gap:8px; font-family:var(--body); font-weight:600; font-size:14.5px;
+    border-radius:10px; padding:10px 18px; cursor:pointer; border:1px solid transparent; white-space:nowrap}
+  .btn-primary{background:var(--grad); color:#fff; box-shadow:0 8px 28px rgba(255,79,135,.28)}
+  .btn-primary:hover{filter:brightness(1.07)}
+  .btn-ghost{border-color:var(--line2); color:var(--text); background:rgba(255,255,255,.02)}
+  .btn-ghost:hover{border-color:var(--pink); color:#fff}
+  @media(max-width:720px){ .nav-links{display:none} }
+
+  /* ---- hero ---- */
+  .hero{display:grid; grid-template-columns:1.05fr .95fr; gap:48px; align-items:center; padding-block:68px 56px}
+  .hero h1{font-size:clamp(34px,5vw,54px); line-height:1.04}
+  .hero p.lead{margin-top:20px; font-size:18px; color:var(--muted); max-width:34ch}
+  .hero-cta{display:flex; gap:12px; margin-top:28px; flex-wrap:wrap}
+  .chips{display:flex; gap:10px; margin-top:30px; flex-wrap:wrap}
+  .chip{font-family:var(--mono); font-size:12.5px; color:var(--muted); border:1px solid var(--line);
+    background:var(--surface); border-radius:999px; padding:6px 13px}
+  .chip b{color:var(--text); font-weight:600}
+  .hero-visual{background:var(--bg2); border:1px solid var(--line); border-radius:20px; padding:18px;
+    box-shadow:0 30px 80px rgba(0,0,0,.45)}
+  .hv-head{display:flex; align-items:center; gap:7px; padding:4px 6px 14px}
+  .dot{width:11px; height:11px; border-radius:50%}
+  @media(max-width:860px){ .hero{grid-template-columns:1fr; gap:34px; padding-block:44px 36px} .hero p.lead{max-width:none} }
+
+  /* ---- sections ---- */
+  section{padding-block:56px}
+  .sec-head{max-width:62ch; margin-bottom:34px}
+  .sec-head h2{font-size:clamp(26px,3.4vw,36px); margin-top:12px}
+  .sec-head p{margin-top:12px; color:var(--muted); font-size:17px}
+
+  /* feature grid */
+  .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:18px}
+  @media(max-width:860px){ .grid{grid-template-columns:1fr 1fr} }
+  @media(max-width:560px){ .grid{grid-template-columns:1fr} }
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:24px 22px;
+    transition:transform .18s ease, border-color .18s ease}
+  .card:hover{transform:translateY(-4px); border-color:var(--line2)}
+  .card .ic{width:42px; height:42px; border-radius:11px; display:grid; place-items:center; margin-bottom:16px;
+    background:rgba(139,124,255,.12); border:1px solid rgba(139,124,255,.25)}
+  .card h3{font-size:18px}
+  .card p{margin-top:9px; color:var(--muted); font-size:14.5px; line-height:1.55}
+  .card .terms{margin-top:14px; display:flex; flex-wrap:wrap; gap:6px}
+  .tag{font-family:var(--mono); font-size:11px; color:var(--faint); border:1px solid var(--line); border-radius:6px; padding:3px 7px}
+
+  /* comparison */
+  .cmp-scroll{overflow:auto; max-height:78vh; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface);
+    overscroll-behavior:contain; -webkit-overflow-scrolling:touch}
+  table.cmp{border-collapse:separate; border-spacing:0; width:100%; min-width:860px; font-size:14.5px}
+  table.cmp th, table.cmp td{padding:14px 16px; text-align:center; border-bottom:1px solid var(--line)}
+  /* Липкая шапка: остаётся на месте при вертикальной прокрутке таблицы. */
+  table.cmp thead th{position:sticky; top:0; z-index:3; background:var(--surface2); font-family:var(--disp); font-weight:600; font-size:14px;
+    box-shadow:0 1px 0 var(--line2)}
+  /* Первый столбец (возможности) липнет при горизонтальной прокрутке. */
+  table.cmp td.feat, table.cmp th.feat{position:sticky; left:0; z-index:2; background:var(--surface)}
+  table.cmp thead th.feat{z-index:4; background:var(--surface2)}
+  table.cmp tbody tr:last-child td{border-bottom:none}
+  table.cmp td.feat, table.cmp th.feat{text-align:left; color:var(--text); font-weight:500; min-width:230px}
+  table.cmp td.feat small{display:block; color:var(--faint); font-weight:400; font-size:12px; font-family:var(--mono); margin-top:2px}
+  .colme{background:linear-gradient(180deg, rgba(255,79,135,.10), rgba(139,124,255,.06)); position:relative}
+  th.colme{border-top:2px solid transparent; border-image:var(--grad) 1}
+  .me-badge{display:inline-block; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:#fff; background:var(--grad); border-radius:999px; padding:2px 9px; margin-top:4px}
+  .mark{display:inline-grid; place-items:center; width:24px; height:24px; border-radius:7px; font-size:13px; font-weight:700}
+  .yes{background:rgba(53,208,127,.16); color:var(--green)}
+  .part{background:rgba(245,185,66,.15); color:var(--amber)}
+  .no{background:rgba(255,255,255,.05); color:var(--faint)}
+  .cell-note{font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  .cmp-note{margin-top:14px; font-size:13px; color:var(--faint)}
+  .cmp-legend{display:flex; gap:16px; flex-wrap:wrap; margin-top:14px; font-size:13px; color:var(--muted)}
+  .cmp-legend span{display:inline-flex; align-items:center; gap:7px}
+
+  /* advantages */
+  .adv{display:grid; grid-template-columns:repeat(2,1fr); gap:18px}
+  @media(max-width:760px){ .adv{grid-template-columns:1fr} }
+  .adv-card{background:linear-gradient(180deg,var(--surface),rgba(27,27,34,.5)); border:1px solid var(--line);
+    border-radius:var(--radius); padding:26px 24px}
+  .adv-card .n{font-family:var(--mono); font-size:12px; color:var(--pink); letter-spacing:.1em}
+  .adv-card h3{font-size:20px; margin-top:8px}
+  .adv-card p{margin-top:10px; color:var(--muted); font-size:15px}
+
+  /* open core / cta */
+  .pricing{display:grid; grid-template-columns:repeat(3,1fr); gap:18px}
+  @media(max-width:760px){ .pricing{grid-template-columns:1fr} }
+  .tier{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:26px 24px; display:flex; flex-direction:column; gap:10px}
+  .tier.feature{border-color:rgba(139,124,255,.35); box-shadow:0 0 0 1px rgba(139,124,255,.12) inset}
+  .tier h3{font-size:19px}
+  .tier .price{font-family:var(--disp); font-size:15px; color:var(--muted)}
+  .tier ul{list-style:none; padding:0; margin:6px 0 0; display:flex; flex-direction:column; gap:9px; font-size:14px; color:var(--muted)}
+  .tier li{display:flex; gap:9px; align-items:flex-start}
+  .tier li::before{content:"→"; color:var(--purple); font-family:var(--mono)}
+
+  .cta{margin-top:18px; text-align:center; background:var(--bg2); border:1px solid var(--line); border-radius:22px; padding:52px 24px}
+  .cta h2{font-size:clamp(26px,3.6vw,38px)}
+  .cta p{margin:14px auto 0; color:var(--muted); max-width:52ch}
+  .cta .hero-cta{justify-content:center}
+
+  footer{border-top:1px solid var(--line); margin-top:64px; padding-block:34px 48px; color:var(--faint); font-size:13.5px}
+  .foot-in{display:flex; gap:20px; align-items:center; flex-wrap:wrap; justify-content:space-between}
+  .disc{max-width:70ch; line-height:1.55; margin-top:16px}
+
+  @media(max-width:560px){
+    table.cmp td.feat, table.cmp th.feat{min-width:168px}
+    table.cmp th, table.cmp td{padding:11px 12px}
+    .cmp-scroll{max-height:72vh}
+    .hero-visual{padding:12px}
+    section{padding-block:44px}
+  }
+  .flow{stroke-dasharray:5 7; animation:flow 1.4s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-24}}
+  @media(prefers-reduced-motion:reduce){ .flow{animation:none} .card{transition:none} }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a href="#top" aria-label="VPS Router">
+      <svg width="150" height="33" viewBox="0 0 220 48" role="img" aria-label="VPS Router">
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff4f87"/><stop offset="1" stop-color="#8b7cff"/></linearGradient></defs>
+        <path d="M7 8h10l7 19 7-19h10L30 40H21z" fill="url(#lg)"/>
+        <path d="M31 8h13v5h-7.5L44 7v11h-5v-6.2h-5z" fill="#ff4f87"/>
+        <text x="60" y="31" font-family="Sora,system-ui,sans-serif" font-size="22" font-weight="750" fill="#f5f5f7">VPS <tspan fill="#ff4f87">Router</tspan></text>
+      </svg>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">Возможности</a>
+      <a href="#compare">Сравнение</a>
+      <a href="#why">Отличия</a>
+      <a href="#opencore">Лицензия</a>
+    </nav>
+    <a class="btn btn-ghost" href="https://boosty.to/iygen/donate" target="_blank" rel="noopener">Поддержать</a>
+  </div>
+</header>
+
+<a id="top"></a>
+<main class="wrap">
+
+  <!-- HERO -->
+  <section class="hero" style="padding-top:60px">
+    <div>
+      <div class="eyebrow">self-hosted · движок sing-box</div>
+      <h1 style="margin-top:16px">Маршрутизация трафика<br>с <span class="grad-text">визуальным графом</span>, а не конфигами</h1>
+      <p class="lead">Панель для своего VPS: выборочно уводите нужные домены и подсети через несколько exit-серверов, управляйте топологией мышкой и выгружайте маршруты прямо в роутер.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#compare">Сравнить с аналогами</a>
+        <a class="btn btn-ghost" href="#features">Что умеет</a>
+      </div>
+      <div class="chips">
+        <span class="chip"><b>7</b> протоколов входа</span>
+        <span class="chip"><b>3</b> роутера: Keenetic · MikroTik · OpenWrt</span>
+        <span class="chip"><b>AGPLv3</b> · RU/EN</span>
+      </div>
+    </div>
+
+    <div class="hero-visual" aria-hidden="true">
+      <div class="hv-head">
+        <span class="dot" style="background:#ff5c5c"></span>
+        <span class="dot" style="background:#f5b942"></span>
+        <span class="dot" style="background:#35d07f"></span>
+        <span style="margin-left:8px; font-family:var(--mono); font-size:12px; color:var(--faint)">граф инфраструктуры</span>
+      </div>
+      <svg viewBox="0 0 440 300" width="100%" style="display:block">
+        <defs>
+          <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#ff4f87"/><stop offset="1" stop-color="#8b7cff"/></linearGradient>
+          <linearGradient id="node" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff4f87"/><stop offset="1" stop-color="#8b7cff"/></linearGradient>
+        </defs>
+        <!-- edges device->router -->
+        <path d="M70 70 C120 70 110 150 170 150" fill="none" stroke="#3a3a46" stroke-width="2"/>
+        <path d="M70 150 C120 150 130 150 170 150" fill="none" stroke="#3a3a46" stroke-width="2"/>
+        <path d="M70 230 C120 230 110 150 170 150" fill="none" stroke="#3a3a46" stroke-width="2"/>
+        <!-- edges router->exits (animated) -->
+        <path class="flow" d="M250 150 C310 150 320 64 380 64" fill="none" stroke="url(#edge)" stroke-width="2.5"/>
+        <path class="flow" d="M250 150 C310 150 320 150 380 150" fill="none" stroke="url(#edge)" stroke-width="2.5"/>
+        <path class="flow" d="M250 150 C310 150 320 236 380 236" fill="none" stroke="url(#edge)" stroke-width="2.5"/>
+        <!-- devices -->
+        <g font-family="JetBrains Mono, monospace" font-size="10" fill="#9b9baa">
+          <circle cx="56" cy="70" r="13" fill="#23232d" stroke="#3a3a46"/><text x="56" y="92" text-anchor="middle">phone</text>
+          <circle cx="56" cy="150" r="13" fill="#23232d" stroke="#3a3a46"/><text x="56" y="172" text-anchor="middle">PC</text>
+          <circle cx="56" cy="230" r="13" fill="#23232d" stroke="#3a3a46"/><text x="56" y="252" text-anchor="middle">TV</text>
+        </g>
+        <!-- router -->
+        <rect x="170" y="126" width="80" height="48" rx="12" fill="#1b1b22" stroke="url(#node)" stroke-width="2"/>
+        <text x="210" y="147" text-anchor="middle" font-family="Sora,sans-serif" font-size="13" font-weight="700" fill="#f4f4f7">Router</text>
+        <text x="210" y="163" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="#9b9baa">sing-box · RU</text>
+        <!-- exits -->
+        <g font-family="Sora,sans-serif" font-weight="600" font-size="12" fill="#f4f4f7">
+          <rect x="372" y="46" width="60" height="36" rx="10" fill="#1b1b22" stroke="#35d07f" stroke-width="1.6"/><text x="402" y="68" text-anchor="middle">FI</text>
+          <rect x="372" y="132" width="60" height="36" rx="10" fill="#1b1b22" stroke="#35d07f" stroke-width="1.6"/><text x="402" y="154" text-anchor="middle">DE</text>
+          <rect x="372" y="218" width="60" height="36" rx="10" fill="#1b1b22" stroke="#8b7cff" stroke-width="1.6"/><text x="402" y="240" text-anchor="middle">NL</text>
+        </g>
+        <text x="402" y="24" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#71717f">exit-серверы</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="sec-head">
+      <div class="eyebrow">Возможности</div>
+      <h2>Не «ещё одна панель юзеров». Инструмент маршрутизации.</h2>
+      <p>Там, где другие управляют аккаунтами на одном сервере, VPS Router управляет топологией и тем, что́ куда едет.</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="ic">🕸️</div>
+        <h3>Граф инфраструктуры</h3>
+        <p>Серверы, exit’ы, наборы и маршруты — узлами и стрелками. Перетаскивай, соединяй, применяй — всё видно сразу.</p>
+        <div class="terms"><span class="tag">Cytoscape</span><span class="tag">drag-n-drop</span></div>
+      </div>
+      <div class="card">
+        <div class="ic">🎯</div>
+        <h3>Выборочная маршрутизация</h3>
+        <p>Домен, geosite или подсеть → нужный exit. Остальное идёт напрямую. Несколько exit’ов с failover-пулом.</p>
+        <div class="terms"><span class="tag">geosite</span><span class="tag">ip_cidr</span><span class="tag">failover</span></div>
+      </div>
+      <div class="card">
+        <div class="ic">📦</div>
+        <h3>Экспорт в роутер</h3>
+        <p>Готовые маршруты одной кнопкой: Keenetic (.bat / HydraRoute), MikroTik RouterOS, OpenWrt. Домены резолвятся в IP.</p>
+        <div class="terms"><span class="tag">route ADD</span><span class="tag">/ip route</span><span class="tag">ip route dev</span></div>
+      </div>
+      <div class="card">
+        <div class="ic">🔐</div>
+        <h3>TLS-фронт и сайт на домене</h3>
+        <p>VLESS-Reality с валидным TLS и настоящим сайтом на домене exit-сервера: мастер проверяет A-запись, берёт сертификат Let’s Encrypt и ставит ваш HTML-шаблон.</p>
+        <div class="terms"><span class="tag">VLESS-Reality</span><span class="tag">Caddy</span><span class="tag">ACME</span></div>
+      </div>
+      <div class="card">
+        <div class="ic">🧩</div>
+        <h3>Модули</h3>
+        <p>Поддержка роутеров и «необязательные» фичи — отдельные модули: ставишь, активируешь, удаляешь. Ядро не раздувается.</p>
+        <div class="terms"><span class="tag">open-core</span><span class="tag">.vmod</span></div>
+      </div>
+      <div class="card">
+        <div class="ic">📈</div>
+        <h3>Мониторинг и алерты</h3>
+        <p>Графики трафика по дням/серверам, живые соединения, трёхстатусное здоровье узлов и письмо админу при недоступности.</p>
+        <div class="terms"><span class="tag">Clash API</span><span class="tag">e-mail alerts</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPARISON -->
+  <section id="compare">
+    <div class="sec-head">
+      <div class="eyebrow">Сравнение</div>
+      <h2>Где VPS Router сильнее — и где честно нет</h2>
+      <p>Популярные панели заточены под управление пользователями на одном узле. VPS Router — под маршрутизацию, топологию и интеграцию с роутерами. Таблица честная: биллинг и подписки у зрелых панелей сильнее.</p>
+    </div>
+    <div class="cmp-scroll">
+      <table class="cmp">
+        <thead>
+          <tr>
+            <th class="feat">Возможность</th>
+            <th class="colme">
+              <svg width="118" height="26" viewBox="0 0 220 48" role="img" aria-label="VPS Router">
+                <defs><linearGradient id="th" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff4f87"/><stop offset="1" stop-color="#8b7cff"/></linearGradient></defs>
+                <path d="M7 8h10l7 19 7-19h10L30 40H21z" fill="url(#th)"/>
+                <path d="M31 8h13v5h-7.5L44 7v11h-5v-6.2h-5z" fill="#ff4f87"/>
+                <text x="60" y="31" font-family="Sora,system-ui,sans-serif" font-size="22" font-weight="750" fill="#f5f5f7">VPS <tspan fill="#ff4f87">Router</tspan></text>
+              </svg>
+              <div class="me-badge">это мы</div>
+            </th>
+            <th>RouteBox<small style="display:block;font-family:var(--mono);font-weight:400;font-size:10px;color:var(--faint)">ближайший аналог*</small></th>
+            <th>3x-ui</th>
+            <th>Marzban</th>
+            <th>Hiddify</th>
+            <th>s-ui</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="feat">Визуальный граф инфраструктуры<small>серверы · exit’ы · маршруты</small></td>
+            <td class="colme"><span class="mark yes">✓</span></td>
+            <td><span class="mark part">~</span></td>
+            <td><span class="mark no">—</span></td><td><span class="mark no">—</span></td><td><span class="mark no">—</span></td><td><span class="mark no">—</span></td>
+          </tr>
+          <tr>
+            <td class="feat">Выборочная маршрутизация по нескольким exit<small>per-route → exit, failover-пул</small></td>
+            <td class="colme"><span class="mark yes">✓</span></td>
+            <td><span class="mark yes">✓</span></td>
+            <td><span class="mark no">—</span></td><td><span class="mark part">~</span></td><td><span class="mark part">~</span></td><td><span class="mark no">—</span></td>
+          </tr>
+          <tr>
+            <td class="feat">Экспорт маршрутов в роутер<small>Keenetic · MikroTik · OpenWrt</small></td>
+            <td class="colme"><span class="mark yes">✓</span></td>
+            <td><span class="mark no">—</span></td>
+            <td><span class="mark no">—</span></td><td><span class="mark no">—</span></td><td><span class="mark no">—</span></td><td><span class="mark no">—</span></td>
+          </tr>
+          <tr>
+            <td class="feat">Мастер TLS-фронта (Reality) + сайт на домене<small>авто-сертификат ACME, проверка DNS</small></td>
+            <td class="colme"><span class="mark yes">✓</span></td>
+            <td><span class="mark part">~</span></td>
+            <td><span class="mark part">~</span></td><td><span class="mark part">~</span></td><td><span class="mark part">~</span></td><td><span class="mark part">~</span></td>
+          </tr>
+          <tr>
+            <td class="feat">Мультироутер / топология узлов</td>
+            <td class="colme"><span class="mark yes">✓</span></td>
+            <td><span class="mark part">~</span></td>
+            <td><span class="mark no">—</span></td><td><span class="mark part">~</span></td><td><span class="mark no">—</span></td><td><span class="mark part">~</span></td>
+          </tr>
+          <tr>
+            <td class="feat">Движок</td>
+            <td class="colme"><span class="cell-note">sing-box</span></td>
+            <td><span class="cell-note">sing-box</span></td>
+            <td><span class="cell-note">Xray</span></td><td><span class="cell-note">Xray</span></td><td><span class="cell-note">Xray / sing-box</span></td><td><span class="cell-note">sing-box</span></td>
+          </tr>
+          <tr>
+            <td class="feat">Протоколы входа устройств<small>VLESS-Reality, AmneziaWG, WG, SS, Trojan, Hysteria2, TUIC</small></td>
+            <td class="colme"><span class="mark yes">✓</span></td>
+            <td><span class="mark part">~</span></td>
+            <td><span class="mark part">~</span></td><td><span class="mark part">~</span></td><td><span class="mark yes">✓</span></td><td><span class="mark yes">✓</span></td>
+          </tr>
+          <tr>
+            <td class="feat">Биллинг и подписки<small>продажа доступов</small></td>
+            <td class="colme"><span class="mark part">~</span></td>
+            <td><span class="mark no">—</span></td>
+            <td><span class="mark part">~</span></td><td><span class="mark yes">✓</span></td><td><span class="mark yes">✓</span></td><td><span class="mark part">~</span></td>
+          </tr>
+          <tr>
+            <td class="feat">Модульная система расширений</td>
+            <td class="colme"><span class="mark yes">✓</span></td>
+            <td><span class="mark part">~</span></td>
+            <td><span class="mark no">—</span></td><td><span class="mark no">—</span></td><td><span class="mark part">~</span></td><td><span class="mark no">—</span></td>
+          </tr>
+          <tr>
+            <td class="feat">Лицензия</td>
+            <td class="colme"><span class="cell-note">AGPLv3</span></td>
+            <td><span class="cell-note">—</span></td>
+            <td><span class="cell-note">GPLv3</span></td><td><span class="cell-note">AGPLv3</span></td><td><span class="cell-note">CC BY-NC</span></td><td><span class="cell-note">GPLv3</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cmp-legend">
+      <span><span class="mark yes" style="width:20px;height:20px">✓</span> есть</span>
+      <span><span class="mark part" style="width:20px;height:20px">~</span> частично / через модуль</span>
+      <span><span class="mark no" style="width:20px;height:20px">—</span> нет</span>
+    </div>
+    <p class="cmp-note">* RouteBox — ближайший по духу проект (маршрутизация), значения ориентировочны. Сравнение основано на публичном позиционировании проектов и может меняться с их развитием. VPS Router не конкурирует в управлении пользователями — он решает другую задачу: маршрутизацию и доставку на роутеры.</p>
+  </section>
+
+  <!-- WHY -->
+  <section id="why">
+    <div class="sec-head">
+      <div class="eyebrow">Отличия</div>
+      <h2>Четыре вещи, которых нет у остальных</h2>
+    </div>
+    <div class="adv">
+      <div class="adv-card">
+        <div class="n">01</div>
+        <h3>Топология вместо списка юзеров</h3>
+        <p>Другие панели — это таблица аккаунтов на одном сервере. Здесь инфраструктура — живой граф: видно, какой трафик через какой exit идёт, и это редактируется мышкой.</p>
+      </div>
+      <div class="adv-card">
+        <div class="n">02</div>
+        <h3>Доводит до роутера</h3>
+        <p>Маршруты не остаются в панели — выгружаются в Keenetic, MikroTik и OpenWrt готовыми скриптами. Домены резолвятся в IP, длинные списки бьются под лимиты прошивки.</p>
+      </div>
+      <div class="adv-card">
+        <div class="n">03</div>
+        <h3>TLS-фронт «под ключ»</h3>
+        <p>Мастер поднимает настоящий сайт на домене exit’а с валидным HTTPS: проверяет A-запись, берёт сертификат Let’s Encrypt и настраивает Reality — без ручной возни с Caddy и ACME.</p>
+      </div>
+      <div class="adv-card">
+        <div class="n">04</div>
+        <h3>Open-core без раздувания</h3>
+        <p>Бесплатное ядро под AGPLv3; роутеры и дополнительные возможности — модули, которые ставятся и удаляются. Операторы докупают коммерческие модули, когда нужно.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- OPEN CORE -->
+  <section id="opencore">
+    <div class="sec-head">
+      <div class="eyebrow">Модель</div>
+      <h2>Open-core: ядро бесплатно, модули — по желанию</h2>
+      <p>Автор — вендор ПО, а не продавец доступов. Личное использование — навсегда бесплатно и под AGPLv3.</p>
+    </div>
+    <div class="pricing">
+      <div class="tier">
+        <h3>Личное ядро</h3>
+        <div class="price">Бесплатно · AGPLv3</div>
+        <ul>
+          <li>Граф, маршрутизация, все протоколы входа</li>
+          <li>Экспорт в Keenetic / MikroTik / OpenWrt</li>
+          <li>Маскировка, графики, алерты</li>
+        </ul>
+      </div>
+      <div class="tier feature">
+        <h3>Коммерческие модули</h3>
+        <div class="price">Для операторов доступа</div>
+        <ul>
+          <li>Биллинг, подписки, провижининг</li>
+          <li>Уведомления: Telegram / e-mail / webhook</li>
+          <li>Ставятся как <span style="font-family:var(--mono)">.vmod</span>, без правки ядра</li>
+        </ul>
+      </div>
+      <div class="tier">
+        <h3>Поддержка</h3>
+        <div class="price">Установка «под ключ»</div>
+        <ul>
+          <li>Помощь с первой настройкой</li>
+          <li>Интеграция с вашим роутером</li>
+          <li>Консультации по маршрутизации</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="cta">
+      <div class="eyebrow" style="color:var(--pink)">поддержать проект</div>
+      <h2 style="margin-top:12px">Нравится идея? Поддержите развитие</h2>
+      <p>VPS Router развивается как независимый проект. Донат ускоряет открытие исходников, документацию и новые модули.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="https://boosty.to/iygen/donate" target="_blank" rel="noopener">Поддержать на Boosty</a>
+        <a class="btn btn-ghost" href="#features">Посмотреть возможности</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-in">
+      <svg width="40" height="38" viewBox="0 0 50 48" role="img" aria-label="VPS Router">
+        <defs><linearGradient id="fm" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff4f87"/><stop offset="1" stop-color="#8b7cff"/></linearGradient></defs>
+        <path d="M7 8h10l7 19 7-19h10L30 40H21z" fill="url(#fm)"/>
+        <path d="M31 8h13v5h-7.5L44 7v11h-5v-6.2h-5z" fill="#ff4f87"/>
+      </svg>
+      <span>© 2026 VPS Router · AGPLv3 · панель маршрутизации на sing-box</span>
+    </div>
+    <p class="disc">Инструмент сетевой маршрутизации (selective routing / split-tunneling) для собственной инфраструктуры. Назначение — управление своими серверами и маршрутами; законность использования и соблюдение правил провайдеров — на стороне оператора.</p>
+  </div>
+</footer>
+</body>
+</html>

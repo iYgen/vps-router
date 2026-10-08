@@ -1,0 +1,29 @@
+{
+    "name": "vps-router/panel",
+    "description": "Панель управления маршрутизацией vps_router",
+    "type": "project",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-pdo_sqlite": "*",
+        "ext-sodium": "*",
+        "phpseclib/phpseclib": "^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

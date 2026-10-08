@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Статус служб — ExampleSoft Update Service</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--text:#1c2430;--muted:#6b7684;--line:#e4e8ee;--accent:#2f6fed;--ok:#1aa251}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;font-size:15px}
+header{background:var(--card);border-bottom:1px solid var(--line)}
+.wrap{max-width:960px;margin:0 auto;padding:0 20px}
+.top{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600}
+.logo{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,#2f6fed,#5b9cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700}
+nav a{color:var(--muted);text-decoration:none;margin-left:20px;font-size:14px}
+h1{font-size:24px;margin:28px 0 6px}
+.sub{color:var(--muted);margin:0 0 24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 20px;margin-bottom:16px}
+.row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.status{display:flex;align-items:center;gap:9px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok)}
+.up{color:var(--ok);font-size:13px}
+.metric{color:var(--muted);font-size:13px}
+footer{color:var(--muted);font-size:13px;padding:28px 0;border-top:1px solid var(--line);margin-top:24px}
+</style>
+</head>
+<body>
+<header><div class="wrap top">
+  <div class="brand"><span class="logo">E</span> ExampleSoft Update Service</div>
+  <nav><a href="/">Обзор</a><a href="/releases.html">Релизы</a><a href="/status.html">Статус</a></nav>
+</div></header>
+
+<main class="wrap">
+  <h1>Статус служб</h1>
+  <p class="sub">Регион EU-North-1 · последняя проверка: непрерывный мониторинг</p>
+
+  <div class="card">
+    <div class="row"><div class="status"><span class="dot"></span> API проверки версий</div><span class="up">Работает · 99.98%</span></div>
+    <div class="row"><div class="status"><span class="dot"></span> Каталог манифестов</div><span class="up">Работает · 99.99%</span></div>
+    <div class="row"><div class="status"><span class="dot"></span> Зеркало пакетов</div><span class="up">Работает · 99.95%</span></div>
+    <div class="row"><div class="status"><span class="dot"></span> Служба подписей</div><span class="up">Работает · 100%</span></div>
+    <div class="row"><div class="status"><span class="dot"></span> Балансировщик доставки</div><span class="up">Работает · 99.97%</span></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><span class="metric">Средний отклик API</span><span class="metric">34 мс</span></div>
+    <div class="row"><span class="metric">Обработано запросов за сутки</span><span class="metric">1 284 507</span></div>
+    <div class="row"><span class="metric">Активных каналов</span><span class="metric">3 (Stable, LTS, Beta)</span></div>
+    <div class="row"><span class="metric">Плановое обслуживание</span><span class="metric">не запланировано</span></div>
+  </div>
+</main>
+
+<footer><div class="wrap">© 2019–2026 ExampleSoft. Служебный узел доставки обновлений.</div></footer>
+</body>
+</html>

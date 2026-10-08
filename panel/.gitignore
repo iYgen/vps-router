@@ -1,0 +1,4 @@
+/vendor/
+.devrun/
+.test-tmp/
+.phpunit.result.cache

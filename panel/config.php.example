@@ -1,0 +1,41 @@
+<?php
+// Скопировать в /etc/panel/config.php (вне webroot!) и заполнить.
+// chmod 640, владелец root:www-data.
+
+return [
+    // Путь к файлу SQLite БД панели.
+    'db_path' => '/var/lib/panel/panel.db',
+
+    // Ключ шифрования секретов (SSH-приватные ключи серверов в графе
+    // инфраструктуры, см. App\Secrets) — 32 байта в hex. Сгенерировать:
+    // openssl rand -hex 32
+    // ВАЖНО: смена значения на уже заполненной БД сделает все сохранённые
+    // SSH-ключи нерасшифровываемыми — храните так же бережно, как пароль root.
+    'app_secret' => 'CHANGE_ME',
+
+    // Куда панель пишет конфиги (должно совпадать с deploy/router/*).
+    'singbox_config_path' => '/etc/sing-box/config.json',
+    'singbox_ruleset_dir' => '/etc/sing-box/rule-sets',
+    'amnezia_conf_dir' => '/etc/amnezia',
+    'amnezia_interfaces_list' => '/etc/amnezia/interfaces.list',
+
+    // Скрипт применения конфигурации (вызывается через sudo без аргументов).
+    'apply_script' => '/usr/local/sbin/apply-router.sh',
+
+    // Скрипт установки ПО на сам входной VPS (sing-box, amneziawg-tools) —
+    // вызывается через sudo без аргументов, см. deploy/provision/entry-vps-install.sh
+    // и deploy/router/sudoers.d/panel-provision.
+    'provision_install_script' => '/usr/local/sbin/vpsrouter-vps-install.sh',
+
+    // Где на диске лежат deploy/provision/exit-*.sh — панель заливает их по
+    // SFTP на exit-серверы при автопровижининге (см. App\Provisioner).
+    // Скопировать туда содержимое deploy/provision/ отдельно от panel/ кода.
+    'provision_scripts_dir' => '/usr/local/share/panel/provision',
+
+    // Reality inbound.
+    'reality_listen_ip' => '203.0.113.10', // второй IPv4 входного VPS
+    'reality_listen_port' => 443,
+
+    // Название cookie сессии.
+    'session_name' => 'panel_sess',
+];

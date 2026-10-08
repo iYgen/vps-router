@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>История релизов — ExampleSoft Update Service</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--text:#1c2430;--muted:#6b7684;--line:#e4e8ee;--accent:#2f6fed;--ok:#1aa251}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;font-size:15px}
+header{background:var(--card);border-bottom:1px solid var(--line)}
+.wrap{max-width:960px;margin:0 auto;padding:0 20px}
+.top{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600}
+.logo{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,#2f6fed,#5b9cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700}
+nav a{color:var(--muted);text-decoration:none;margin-left:20px;font-size:14px}
+nav a:hover{color:var(--text)}
+h1{font-size:24px;margin:28px 0 22px}
+.rel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:14px}
+.rel h2{font-size:17px;margin:0 0 2px;display:flex;align-items:center;gap:10px}
+.date{color:var(--muted);font-size:13px;margin:0 0 12px}
+.tag{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:20px;background:#e8f0fe;color:var(--accent)}
+.tag.lts{background:#e6f6ec;color:var(--ok)}
+.tag.beta{background:#fff2e0;color:#c98a00}
+ul{margin:6px 0 0;padding-left:20px}li{margin:3px 0;color:#3a4552}
+code{background:#eef1f6;padding:1px 6px;border-radius:4px;font-size:13px}
+footer{color:var(--muted);font-size:13px;padding:28px 0;border-top:1px solid var(--line);margin-top:24px}
+</style>
+</head>
+<body>
+<header><div class="wrap top">
+  <div class="brand"><span class="logo">E</span> ExampleSoft Update Service</div>
+  <nav><a href="/">Обзор</a><a href="/releases.html">Релизы</a><a href="/status.html">Статус</a></nav>
+</div></header>
+
+<main class="wrap">
+  <h1>История релизов</h1>
+
+  <div class="rel">
+    <h2>4.8.2 <span class="tag">Stable</span></h2>
+    <p class="date">18 сентября 2026 · сборка 4820</p>
+    <ul>
+      <li>Ускорена первичная синхронизация каталога на медленных соединениях.</li>
+      <li>Исправлено повторное скачивание манифеста при смене часового пояса.</li>
+      <li>Обновлены корневые сертификаты в доверенном хранилище клиента.</li>
+      <li>Мелкие исправления интерфейса менеджера обновлений.</li>
+    </ul>
+  </div>
+
+  <div class="rel">
+    <h2>4.8.1 <span class="tag">Stable</span></h2>
+    <p class="date">27 августа 2026 · сборка 4815</p>
+    <ul>
+      <li>Устранена утечка памяти в фоновом сервисе проверки версий.</li>
+      <li>Добавлена поддержка дельта-обновлений для модулей более 200 МБ.</li>
+      <li>Исправлена обработка прокси-настроек в корпоративных сетях.</li>
+    </ul>
+  </div>
+
+  <div class="rel">
+    <h2>4.6.11 <span class="tag lts">LTS</span></h2>
+    <p class="date">12 августа 2026 · сборка 4611</p>
+    <ul>
+      <li>Плановое обновление безопасности ветки долгосрочной поддержки.</li>
+      <li>Совместимость с политиками автоматического развёртывания.</li>
+      <li>Актуализированы контрольные суммы в манифесте <code>lts/manifest.json</code>.</li>
+    </ul>
+  </div>
+
+  <div class="rel">
+    <h2>4.9.0-rc3 <span class="tag beta">Beta</span></h2>
+    <p class="date">5 сентября 2026 · сборка 4903</p>
+    <ul>
+      <li>Новый механизм проверки целостности пакетов на основе подписей Ed25519.</li>
+      <li>Экспериментальный параллельный загрузчик модулей.</li>
+      <li>Внимание: канал Beta не рекомендуется для промышленной эксплуатации.</li>
+    </ul>
+  </div>
+
+  <div class="rel">
+    <h2>4.8.0 <span class="tag">Stable</span></h2>
+    <p class="date">30 июля 2026 · сборка 4800</p>
+    <ul>
+      <li>Переработан протокол согласования версий между клиентом и сервером.</li>
+      <li>Сокращён объём служебного трафика при ежедневной проверке.</li>
+      <li>Добавлены региональные зеркала каталога.</li>
+    </ul>
+  </div>
+</main>
+
+<footer><div class="wrap">© 2019–2026 ExampleSoft. Служебный узел доставки обновлений.</div></footer>
+</body>
+</html>

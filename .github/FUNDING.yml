@@ -1,0 +1,15 @@
+# Кнопка «Sponsor» в шапке репозитория GitHub.
+# Международные платформы (github, patreon, ko_fi, open_collective) для авторов
+# в некоторых регионах недоступны из-за платёжных ограничений — используем `custom`
+# со своими ссылками. Раскомментируйте и подставьте реальные URL, лишнее удалите.
+
+custom:
+  - "https://boosty.to/iygen/donate"           # Boosty (VK) — аналог Patreon
+  # - "https://yoomoney.ru/to/ВАШ_КОШЕЛЁК"      # ЮMoney
+  # - "https://www.donationalerts.com/r/ВАШ_НИК" # DonationAlerts
+  # - "https://pay.cloudtips.ru/p/ВАШ_КОД"      # CloudTips (Тинькофф)
+
+# Международные ключи (если аккаунты заработают) — раскомментируйте нужное:
+# github: ВАШ_ЛОГИН            # GitHub Sponsors
+# ko_fi: ВАШ_НИК               # Ko-fi
+# patreon: ВАШ_НИК             # Patreon

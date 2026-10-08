@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 48" width="220" height="48">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff4f87"/><stop offset="1" stop-color="#8b7cff"/></linearGradient></defs>
+<path d="M7 8h10l7 19 7-19h10L30 40H21z" fill="url(#g)"/>
+<path d="M31 8h13v5h-7.5L44 7v11h-5v-6.2h-5z" fill="#ff4f87"/>
+<text x="60" y="31" font-family="Inter,system-ui,sans-serif" font-size="22" font-weight="750" fill="#f5f5f7">VPS <tspan fill="#ff4f87">Router</tspan></text>
+</svg>

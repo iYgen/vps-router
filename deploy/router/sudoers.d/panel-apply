@@ -1,0 +1,6 @@
+# Установка: скопировать в /etc/sudoers.d/panel-apply, права 440, владелец root:root.
+# Проверить синтаксис перед применением: visudo -cf /etc/sudoers.d/panel-apply
+#
+# www-data может выполнить ТОЛЬКО этот один скрипт, без аргументов и без пароля.
+# Скрипт сам ничего не принимает извне — вся конфигурация уже на диске.
+www-data ALL=(root) NOPASSWD: /usr/local/sbin/apply-router.sh

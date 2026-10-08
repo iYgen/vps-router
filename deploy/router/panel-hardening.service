@@ -1,0 +1,12 @@
+[Unit]
+Description=Panel hardening: close risky ports and restore panel firewall rules at boot
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/panel-hardening.sh --boot
+
+[Install]
+WantedBy=multi-user.target
