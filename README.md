@@ -1,313 +1,320 @@
 # vps_router
 
-**vps_router** — это веб-панель на PHP, которая превращает обычный VPS в «умный роутер»
-для трафика. Вы подключаете к нему свои устройства (телефон, ноутбук, телевизор,
-домашний роутер Keenetic), а панель решает, **какой трафик куда отправить**:
-часть — напрямую с самого VPS, а выбранные сайты (например YouTube, Claude и т.п.) —
-через промежуточный «exit-сервер» в другой стране. Всё это настраивается мышкой
-на визуальной схеме, без правки конфигов руками.
+**English** · [Русский](README.ru.md)
 
-> Коротко: одна точка входа, избирательная маршрутизация по правилам, наглядный
-> граф серверов, поддержка нескольких протоколов подключения и нескольких
-> роутеров, встроенный мастер установки прямо в браузере.
+**vps_router** is a PHP web panel that turns an ordinary VPS into a "smart router"
+for traffic. You connect your devices to it (phone, laptop, TV, a home Keenetic
+router), and the panel decides **which traffic goes where**: part of it goes
+directly from the VPS itself, while selected sites (e.g. YouTube, Claude, etc.) go
+through an intermediate "exit server" in another country. Everything is configured
+with the mouse on a visual graph, without editing configs by hand.
 
----
-
-## Зачем он нужен
-
-- **Избирательная маршрутизация.** Не гонять весь трафик через удалённый сервер (это
-  медленнее), а только те домены/подсети, которые вы укажете. Остальное идёт напрямую
-  и быстро.
-- **Одна панель вместо десятка конфигов.** Серверы, туннели, правила маршрутизации,
-  устройства — всё в одном веб-интерфейсе. Нажали «Применить» — панель сама собрала
-  конфиг sing-box, разложила по файлам и перезапустила службу.
-- **Наглядность.** Инфраструктура рисуется графом: серверы, соединения между ними,
-  наборы серверов с автопереключением (failover), маршруты.
-- **Много устройств и протоколов.** Устройства подключаются по VLESS+Reality (маскируется
-  под обычный HTTPS), Shadowsocks, Trojan, Hysteria2 или WireGuard/AmneziaWG.
-- **Роутер Keenetic из коробки.** Есть выгрузка маршрутов для домашнего роутера
-  и «умный DNS», чтобы устройства за роутером (например Smart TV) корректно работали.
+> In short: one entry point, rule-based selective routing, a clear server graph,
+> several connection protocols and multiple routers, and a built-in setup wizard
+> right in the browser.
 
 ---
 
-## Как это работает (простыми словами)
+## Why you'd want it
+
+- **Selective routing.** Don't push all traffic through a remote server (that's
+  slower) — only the domains/subnets you specify. Everything else goes directly and
+  fast.
+- **One panel instead of a dozen configs.** Servers, tunnels, routing rules and
+  devices — all in a single web interface. Click "Apply" and the panel assembles the
+  sing-box config itself, lays it out into files and restarts the service.
+- **Visual clarity.** The infrastructure is drawn as a graph: servers, the links
+  between them, server sets with automatic failover, routes.
+- **Many devices and protocols.** Devices connect over VLESS+Reality (disguised as
+  ordinary HTTPS), Shadowsocks, Trojan, Hysteria2 or WireGuard/AmneziaWG.
+- **Keenetic router out of the box.** Route export for a home router and "smart DNS"
+  so that devices behind the router (e.g. a Smart TV) work correctly.
+
+---
+
+## How it works (in plain words)
 
 ```
-   Ваши устройства              Входной VPS (панель + sing-box)         Exit-серверы
+   Your devices                 Entry VPS (panel + sing-box)            Exit servers
  ┌───────────────┐            ┌──────────────────────────────┐      ┌────────────────┐
- │ Телефон       │            │                              │      │  Регион A      │
- │ Ноутбук       │  VLESS/WG  │   sing-box (движок роутинга) │──────│  Регион B      │
- │ Телевизор     │──────────▶ │   ├─ правило: youtube→exit   │ WG/  │  (любой из     │
- │ Роутер        │            │   ├─ правило: claude→exit    │ VLESS│   пула)        │
- └───────────────┘            │   └─ остальное → напрямую    │      └────────────────┘
+ │ Phone         │            │                              │      │  Region A      │
+ │ Laptop        │  VLESS/WG  │   sing-box (routing engine)  │──────│  Region B      │
+ │ TV            │──────────▶ │   ├─ rule: youtube→exit      │ WG/  │  (any from     │
+ │ Router        │            │   ├─ rule: claude→exit       │ VLESS│   the pool)    │
+ └───────────────┘            │   └─ everything else → direct│      └────────────────┘
                               │                              │
-                              │   PHP-панель (SQLite)        │──▶ вы управляете
-                              └──────────────────────────────┘     через браузер
+                              │   PHP panel (SQLite)         │──▶ you manage it
+                              └──────────────────────────────┘     from a browser
 ```
 
-1. **Устройство** подключается к входному VPS по выбранному протоколу.
-2. **sing-box** на VPS — единственный движок. Он смотрит на домен/адрес каждого
-   соединения и по правилам из базы решает: отправить напрямую или в туннель к exit-серверу.
-3. **Панель** ничего не маршрутизирует сама — она лишь генерирует конфиг sing-box
-   (и конфиги WireGuard/AmneziaWG) из базы данных и применяет его одной привилегированной
-   командой. Переключение exit-сервера у набора — это мгновенная смена «ярлыка» в конфиге,
-   а не пересборка туннеля.
-4. Туннели к exit-серверам подняты постоянно, поэтому переключения происходят без пауз.
+1. **A device** connects to the entry VPS over the chosen protocol.
+2. **sing-box** on the VPS is the only engine. It looks at the domain/address of each
+   connection and, by the rules from the database, decides whether to send it directly
+   or into a tunnel to an exit server.
+3. **The panel** does not route anything itself — it only generates the sing-box config
+   (and WireGuard/AmneziaWG configs) from the database and applies it with a single
+   privileged command. Switching a set's exit server is an instant change of a "label"
+   in the config, not a tunnel rebuild.
+4. Tunnels to exit servers stay up permanently, so switches happen without pauses.
 
 <details>
-<summary><b>📁 Какие файлы за что отвечают (нажмите, чтобы раскрыть)</b></summary>
+<summary><b>📁 What each file is responsible for (click to expand)</b></summary>
 
-### Корень репозитория
+### Repository root
 
-| Путь | Назначение |
-|------|-----------|
-| `README.md` | этот файл |
-| `LICENSE` | лицензия |
-| `deploy/` | всё для установки на серверы (скрипты, nginx, sudoers, provisioning) |
-| `panel/` | сам код PHP-панели (деплоится на VPS в `/var/www/panel`) |
+| Path | Purpose |
+|------|---------|
+| `README.md` | this file |
+| `LICENSE` | license |
+| `deploy/` | everything for installing on servers (scripts, nginx, sudoers, provisioning) |
+| `panel/` | the PHP panel code itself (deployed to the VPS at `/var/www/panel`) |
 
-### `panel/` — код панели
+### `panel/` — panel code
 
-| Путь | Назначение |
-|------|-----------|
-| `composer.json` / `composer.lock` | зависимости PHP (см. спойлер «ПО») |
-| `config.php.example` | шаблон конфига → копируется в `/etc/panel/config.php` вне webroot |
-| `phpunit.xml` | конфигурация тестов |
-| `public/` | webroot — то, что видит браузер |
-| `src/` | классы приложения (логика) |
-| `src/Models/` | модели данных (работа с таблицами SQLite) |
-| `migrations/` | SQL-миграции схемы БД (применяются по порядку) |
-| `bin/` | CLI-скрипты (крон, обслуживание) |
-| `lang/` | переводы интерфейса (`ru.php`, `en.php`) |
-| `tests/` | PHPUnit-тесты |
+| Path | Purpose |
+|------|---------|
+| `composer.json` / `composer.lock` | PHP dependencies (see the "Software" spoiler) |
+| `config.php.example` | config template → copied to `/etc/panel/config.php` outside the webroot |
+| `phpunit.xml` | test configuration |
+| `public/` | webroot — what the browser sees |
+| `src/` | application classes (logic) |
+| `src/Models/` | data models (working with SQLite tables) |
+| `migrations/` | SQL schema migrations (applied in order) |
+| `bin/` | CLI scripts (cron, maintenance) |
+| `lang/` | interface translations (`ru.php`, `en.php`) |
+| `tests/` | PHPUnit tests |
 
-### `panel/public/` — страницы (webroot)
+### `panel/public/` — pages (webroot)
 
-| Файл | Назначение |
-|------|-----------|
-| `index.php` | точка входа / редирект |
-| `install.php` | **визуальный мастер установки** (доступен, пока нет админа) |
-| `login.php`, `logout.php` | вход/выход |
-| `forgot-password.php`, `reset-password.php` | восстановление пароля |
-| `dashboard.php` | **главный экран — граф инфраструктуры** + живые KPI (скорость, устройства онлайн, аптайм, здоровье exit'ов) |
-| `servers.php` | серверы и exit-серверы |
-| `groups.php`, `group.php` | маршруты (группы правил) + пресеты, импорт внешних списков, Route Inspector, выгрузка для Keenetic/HydraRoute |
-| `devices.php`, `device-config.php` | устройства (иконки по типу, статус, трафик ↓↑) и мастер добавления, выдача конфигов/ссылок |
-| `traffic.php` | трафик: суммарно / сегодня / 30 дней, по exit'ам, по устройствам |
-| `connections.php` | живые сессии (флаги стран, трафик, exit, возраст соединения) |
-| `logs.php` | просмотр журнала sing-box (journalctl) |
-| `settings.php` | настройки: протоколы, блокировка рекламы/QUIC, умный DNS, приватность, смена пароля/2FA |
-| `client-policy.php` | политики для клиентов |
-| `wg-peers.php`, `wg-peer-config.php` | WireGuard-пиры и их конфиги |
-| `audit.php` | журнал действий |
-| `api/*.php` | JSON-API для графа и страниц (servers, connections, routes, traffic, keenetic-export и др.) |
-| `assets/` | статика: шрифты, JS графа (Cytoscape.js), стили |
+| File | Purpose |
+|------|---------|
+| `index.php` | entry point / redirect |
+| `install.php` | **visual setup wizard** (available until an admin exists) |
+| `login.php`, `logout.php` | sign in/out |
+| `forgot-password.php`, `reset-password.php` | password recovery |
+| `dashboard.php` | **main screen — infrastructure graph** + live KPIs (rate, devices online, uptime, exit health) |
+| `servers.php` | servers and exit servers |
+| `groups.php`, `group.php` | routes (rule groups) + presets, external-list import, Route Inspector, Keenetic/HydraRoute export |
+| `devices.php`, `device-config.php` | devices (icons by type, status, traffic ↓↑) and the add wizard, config/link delivery |
+| `traffic.php` | traffic: total / today / 30 days, by exit, by device |
+| `connections.php` | live sessions (country flags, traffic, exit, connection age) |
+| `logs.php` | sing-box journal viewer (journalctl) |
+| `settings.php` | settings: protocols, ad/QUIC blocking, smart DNS, privacy, password/2FA change |
+| `client-policy.php` | client policies |
+| `wg-peers.php`, `wg-peer-config.php` | WireGuard peers and their configs |
+| `audit.php` | action log |
+| `api/*.php` | JSON API for the graph and pages (servers, connections, routes, traffic, keenetic-export, etc.) |
+| `assets/` | static files: fonts, graph JS (Cytoscape.js), styles |
 
-### `panel/src/` — ключевые классы
+### `panel/src/` — key classes
 
-| Файл | Назначение |
-|------|-----------|
-| `bootstrap.php` | инициализация (автозагрузка, конфиг, сессия, i18n) |
-| `App.php` | доступ к конфигу приложения |
-| `Database.php` | подключение к SQLite (режим WAL, миграции) |
-| `Auth.php`, `Totp.php` | аутентификация, двухфакторка (TOTP) |
-| `Secrets.php` | шифрование секретов (SSH-ключи серверов) ключом `app_secret` |
-| `Ssh.php` | SSH-клиент (phpseclib) — тест подключения, провижининг |
-| `SingboxConfigBuilder.php` | **сборка конфига sing-box** из базы; оркестратор над `Singbox\*` (правила, DNS, inbound/outbound) |
-| `Singbox/*` | модульные сборщики: `ExitOutboundBuilder`, `RuleSetRegistry`, `RouteBuilder`, `DnsBuilder`, `InboundsBuilder`, `ConfigValidator` (пред-валидация ссылок + предупреждения по версии) |
-| `SingboxVersion.php`, `SingboxLog.php` | версия установленного sing-box, чтение журнала (journalctl) |
-| `RouteInspector.php`, `RoutePresets.php` | «куда пойдёт домен/IP» + курируемые пресеты geosite (youtube, google и др.) |
-| `ExternalListImporter.php` | импорт внешних списков (Antizapret/URL), опц. загрузка через exit (SOCKS), SSRF-guard |
-| `HydraRouteExport.php` | экспорт маршрутов для HydraRoute (`domain.conf` + `ip.list` по политикам) |
-| `Amnezia/AwgParams.php`, `Amnezia/AwgKernel.php` | валидация обфускации AmneziaWG, детект awg-quick/kernel-модуля |
-| `LocalSystem.php` | сведения о самом узле без SSH (нагрузка, статус sing-box, публичный IPv6) |
-| `AmneziaConfigBuilder.php` | сборка конфигов AmneziaWG/WireGuard |
-| `Applier.php` | предпросмотр/валидация/**применение**/откат конфигурации |
-| `DeviceInbounds.php` | входящие протоколы устройств (VLESS/SS/Trojan/Hysteria2/WG) |
-| `ClientPolicyBuilder.php` | политики маршрутизации на уровне клиента |
-| `RouterContext.php` | контекст текущего роутера (мультироутер) |
-| `Provisioner.php` | автоустановка ПО на exit-серверы по SSH/SFTP |
-| `ExitServerFactory.php`, `ExitServerBalancer.php` | создание/балансировка exit-серверов |
-| `KeeneticExport.php` | выгрузка маршрутов для роутера (`.bat` с `route ADD`, ZIP-разбивка) |
-| `KeeneticSyncService.php` | синхронизация маршрутов с Keenetic по API |
-| `TrafficCollector.php`, `ServerTraffic.php` | учёт трафика устройств/серверов |
-| `Installer.php` | логика мастера установки / восстановления |
-| `PanelBackup.php` | резервная копия настроек панели |
-| `Diagnostics.php`, `BlockChecker.php`, `NetworkInfo.php` | диагностика доступности, определение IP |
-| `RiskScanner.php`, `SecurityAudit.php` | сканеры рисков/безопасности |
-| `IpListImporter.php`, `FreeSubscriptions.php` | импорт списков IP, бесплатные подписки/пулы |
-| `I18n.php`, `View.php` | локализация и рендеринг страниц |
-| `Http.php`, `Mailer.php` | HTTP-хелперы, отправка почты |
+| File | Purpose |
+|------|---------|
+| `bootstrap.php` | initialization (autoload, config, session, i18n) |
+| `App.php` | access to the app config |
+| `Database.php` | SQLite connection (WAL mode, migrations) |
+| `Auth.php`, `Totp.php` | authentication, two-factor (TOTP) |
+| `Secrets.php` | encryption of secrets (servers' SSH keys) with `app_secret` |
+| `Ssh.php` | SSH client (phpseclib) — connection test, provisioning |
+| `SingboxConfigBuilder.php` | **builds the sing-box config** from the database; orchestrator over `Singbox\*` (rules, DNS, inbound/outbound) |
+| `Singbox/*` | modular builders: `ExitOutboundBuilder`, `RuleSetRegistry`, `RouteBuilder`, `DnsBuilder`, `InboundsBuilder`, `ConfigValidator` (pre-validation of references + version warnings) |
+| `SingboxVersion.php`, `SingboxLog.php` | version of the installed sing-box, journal reading (journalctl) |
+| `RouteInspector.php`, `RoutePresets.php` | "where a domain/IP will go" + curated geosite presets (youtube, google, etc.) |
+| `ExternalListImporter.php` | external-list import (Antizapret/URL), optional fetch via exit (SOCKS), SSRF guard |
+| `HydraRouteExport.php` | route export for HydraRoute (`domain.conf` + `ip.list` by policy) |
+| `Amnezia/AwgParams.php`, `Amnezia/AwgKernel.php` | AmneziaWG obfuscation validation, awg-quick/kernel-module detection |
+| `LocalSystem.php` | info about the node itself without SSH (load, sing-box status, public IPv6) |
+| `AmneziaConfigBuilder.php` | builds AmneziaWG/WireGuard configs |
+| `Applier.php` | preview/validate/**apply**/roll back the configuration |
+| `DeviceInbounds.php` | device inbound protocols (VLESS/SS/Trojan/Hysteria2/WG) |
+| `ClientPolicyBuilder.php` | client-level routing policies |
+| `RouterContext.php` | current router context (multi-router) |
+| `Provisioner.php` | auto-install software on exit servers over SSH/SFTP |
+| `ExitServerFactory.php`, `ExitServerBalancer.php` | creation/balancing of exit servers |
+| `KeeneticExport.php` | route export for the router (`.bat` with `route ADD`, ZIP splitting) |
+| `KeeneticSyncService.php` | route sync with Keenetic via API |
+| `TrafficCollector.php`, `ServerTraffic.php` | device/server traffic accounting |
+| `Installer.php` | setup/restore wizard logic |
+| `PanelBackup.php` | backup of panel settings |
+| `Diagnostics.php`, `BlockChecker.php`, `NetworkInfo.php` | reachability diagnostics, IP detection |
+| `RiskScanner.php`, `SecurityAudit.php` | risk/security scanners |
+| `IpListImporter.php`, `FreeSubscriptions.php` | IP-list import, free subscriptions/pools |
+| `I18n.php`, `View.php` | localization and page rendering |
+| `Http.php`, `Mailer.php` | HTTP helpers, mail sending |
 
-### `panel/src/Models/` — модели БД
+### `panel/src/Models/` — DB models
 
 `Server`, `ExitServer`, `ExitServerPeer`, `ExitServerLoad`, `Connection`,
-`ServerSet` (набор серверов), `RuleGroup` / `Rule` (маршруты), `Client` (устройство),
-`PolicyProfile` / `PolicyDevice` / `PolicyVersion` (политики), `ConfigVersion` (версии конфига),
-`NodeSetting` / `Setting` (настройки узла/глобальные), `AuditLog` (журнал), `RiskScanResult`.
+`ServerSet`, `RuleGroup` / `Rule` (routes), `Client` (device),
+`PolicyProfile` / `PolicyDevice` / `PolicyVersion` (policies), `ConfigVersion` (config versions),
+`NodeSetting` / `Setting` (node/global settings), `AuditLog`, `RiskScanResult`.
 
-### `panel/bin/` — CLI и крон
+### `panel/bin/` — CLI and cron
 
-| Файл | Назначение |
-|------|-----------|
-| `create-admin.php` | создать/сбросить администратора |
-| `collect_traffic.php` | собрать трафик устройств (крон) |
-| `collect_exit_load.php` | собрать нагрузку exit-серверов (крон) |
-| `sync-ip-lists.php` | обновить списки IP-подсетей (крон) |
-| `free_pool_health.php`, `health_check.php`, `health_check_servers.php` | проверки здоровья |
-| `risk_scan.php`, `security_scan.php` | сканы рисков и обновлений (крон) |
-| `encrypt-exit-secrets.php`, `fix-reality-key-encoding.php` | разовые обслуживающие скрипты |
+| File | Purpose |
+|------|---------|
+| `create-admin.php` | create/reset the administrator |
+| `collect_traffic.php` | collect device traffic (cron) |
+| `collect_exit_load.php` | collect exit-server load (cron) |
+| `sync-ip-lists.php` | update IP-subnet lists (cron) |
+| `free_pool_health.php`, `health_check.php`, `health_check_servers.php` | health checks |
+| `risk_scan.php`, `security_scan.php` | risk and update scans (cron) |
+| `encrypt-exit-secrets.php`, `fix-reality-key-encoding.php` | one-off maintenance scripts |
 
-### `deploy/` — установка на серверы
+### `deploy/` — installing on servers
 
-| Путь | Назначение |
-|------|-----------|
-| `install.sh` | **интерактивный установщик** на свежий VPS (`sudo bash deploy/install.sh`) |
-| `router/` | всё для узла-роутера: `apply-router.sh`, sudoers, nginx-vhost, firewall, hardening, README |
-| `exit/` | инструкция по настройке exit-узла |
-| `exit-front/` | exit с маскировочным TLS-фронтом (reality-front) |
-| `provision/` | скрипты автоустановки: установка ПО на узел, `router-apply.sh`, `exit-*.sh`, hardening, wg-пиры |
+| Path | Purpose |
+|------|---------|
+| `install.sh` | **interactive installer** on a fresh VPS (`sudo bash deploy/install.sh`) |
+| `router/` | everything for a router node: `apply-router.sh`, sudoers, nginx vhost, firewall, hardening, README |
+| `exit/` | exit-node setup guide |
+| `exit-front/` | exit with a disguising TLS front (reality-front) |
+| `provision/` | auto-install scripts: software install on a node, `router-apply.sh`, `exit-*.sh`, hardening, wg peers |
 
-### `migrations/` — схема БД (по порядку)
+### `migrations/` — DB schema (in order)
 
-`001` базовая · `002` инфраструктура (граф) · `003` мультипротокол · `004` иерархия
-маршрутов · `005` wg-пиры · `006` port-knock · `007` политики клиента · `008` риск-скан/бан
-сканеров · `009` безопасность входа · `010` пул exit-серверов и нагрузка · `011` inbound
-устройств · `012` трафик устройств · `013` тотал/квоты трафика · `014` язык пользователя ·
-`015` мультироутер · `016` бесплатные exit-ы · `017` двухфакторка (TOTP).
+`001` base · `002` infrastructure (graph) · `003` multi-protocol · `004` route
+hierarchy · `005` wg peers · `006` port-knock · `007` client policies · `008`
+risk-scan / scanner ban · `009` login security · `010` exit-server pool and load ·
+`011` device inbounds · `012` device traffic · `013` traffic total/quotas · `014`
+user language · `015` multi-router · `016` free exits · `017` two-factor (TOTP).
 
 </details>
 
 <details>
-<summary><b>🧩 Какое дополнительное ПО используется (нажмите, чтобы раскрыть)</b></summary>
+<summary><b>🧩 Which additional software is used (click to expand)</b></summary>
 
-### На сервере (ставит установщик автоматически)
+### On the server (installed automatically by the installer)
 
-| ПО | Зачем | Обязательно? |
-|----|-------|--------------|
-| **PHP 8.1+** (php-fpm) + расширения `pdo_sqlite`, `sodium`, `mbstring`, `curl`, `xml` | сама панель | да |
-| **SQLite** (через `ext-pdo_sqlite`) | база данных панели, отдельный сервер БД не нужен | да |
-| **sing-box** | движок маршрутизации (единственный) | да |
-| **nginx** | веб-сервер для панели (отдельный vhost) | да |
-| **AmneziaWG / WireGuard** (`amneziawg-tools`) | туннели к exit-серверам и вход по WG | опционально* |
-| **certbot** | бесплатный TLS-сертификат для домена панели | опционально |
-| **fail2ban** | защита от брутфорса (рекомендуется) | опционально |
+| Software | Why | Required? |
+|----------|-----|-----------|
+| **PHP 8.1+** (php-fpm) + extensions `pdo_sqlite`, `sodium`, `mbstring`, `curl`, `xml` | the panel itself | yes |
+| **SQLite** (via `ext-pdo_sqlite`) | the panel's database, no separate DB server needed | yes |
+| **sing-box** | the routing engine (the only one) | yes |
+| **nginx** | web server for the panel (a separate vhost) | yes |
+| **AmneziaWG / WireGuard** (`amneziawg-tools`) | tunnels to exit servers and WG inbound | optional* |
+| **certbot** | free TLS certificate for the panel's domain | optional |
+| **fail2ban** | brute-force protection (recommended) | optional |
 
-\* Без AmneziaWG остальные протоколы (VLESS, Shadowsocks, Trojan, Hysteria2) работают.
+\* Without AmneziaWG the other protocols (VLESS, Shadowsocks, Trojan, Hysteria2) still work.
 
-### PHP-зависимости (composer)
+### PHP dependencies (composer)
 
-| Пакет | Зачем |
-|-------|-------|
-| `phpseclib/phpseclib` | SSH/SFTP-клиент: тест подключения к серверам и автопровижининг (не через `shell_exec`) |
-| `phpunit/phpunit` (dev) | тесты |
+| Package | Why |
+|---------|-----|
+| `phpseclib/phpseclib` | SSH/SFTP client: connection test and auto-provisioning (not via `shell_exec`) |
+| `phpunit/phpunit` (dev) | tests |
 
-### Клиентская часть (уже вендорена в репозитории, npm не нужен)
+### Client side (already vendored in the repo, npm not needed)
 
-- **Cytoscape.js** + **edgehandles** — рендеринг графа инфраструктуры. Лежат в
-  `panel/public/assets/vendor/`, сборка не требуется.
+- **Cytoscape.js** + **edgehandles** — rendering of the infrastructure graph. They live in
+  `panel/public/assets/vendor/`, no build step required.
 
 </details>
 
 ---
 
-## Установка — что куда нажимать
+## Installation — what to click where
 
-Нужен **свежий VPS** (Ubuntu/Debian или CentOS/RHEL-совместимый) с root-доступом.
-Домен не обязателен — панель может работать по IP.
+You need a **fresh VPS** (Ubuntu/Debian or CentOS/RHEL-compatible) with root access.
+A domain is optional — the panel can run over an IP.
 
-### Шаг 1. Заливаем код и запускаем установщик
+### Step 1. Upload the code and run the installer
 
-Скопируйте репозиторий на сервер (через `git clone` или `scp`) и запустите:
+Copy the repository to the server (via `git clone` or `scp`) and run:
 
 ```bash
 sudo bash deploy/install.sh
 ```
 
-Установщик задаст вопросы (можно жать Enter — подставит значения по умолчанию):
+The installer will ask a few questions (you can just press Enter for the defaults):
 
-1. **Язык** — `ru` или `en`.
-2. **Домен или IP** — если домена нет, оставьте пустым: панель откроется по IP сервера.
-3. Дальше он сам: поставит PHP+расширения, sing-box, (по желанию) AmneziaWG, развернёт
-   код в `/var/www/panel`, создаст `/etc/panel/config.php`, настроит nginx-vhost и sudoers,
-   применит миграции БД. При наличии домена предложит выпустить **HTTPS-сертификат**.
+1. **Language** — `ru` or `en`.
+2. **Domain or IP** — if you have no domain, leave it empty: the panel opens on the
+   server's IP.
+3. The rest is automatic: it installs PHP+extensions, sing-box, (optionally) AmneziaWG,
+   deploys the code to `/var/www/panel`, creates `/etc/panel/config.php`, sets up the
+   nginx vhost and sudoers, and applies the DB migrations. If a domain is present it
+   will offer to issue an **HTTPS certificate**.
 
-> Установщик **не трогает существующие сайты** — панель живёт отдельным vhost'ом, а
-> вход устройств (Reality) — на отдельном IP/порту, который вы зададите в мастере.
+> The installer **does not touch existing sites** — the panel lives in its own vhost,
+> and the device inbound (Reality) is on a separate IP/port that you set in the wizard.
 
-В конце он напишет адрес, который надо открыть в браузере.
+At the end it prints the address to open in the browser.
 
-### Шаг 2. Визуальный мастер в браузере
+### Step 2. The visual wizard in the browser
 
-Откройте показанный адрес (`https://ваш-домен` или `http://IP`). Запустится
-**мастер установки** (`install.php`). В нём по шагам:
+Open the shown address (`https://your-domain` or `http://IP`). The
+**setup wizard** (`install.php`) starts. Step by step:
 
-1. **Установка с нуля** ИЛИ **восстановление из копии настроек** (если переезжаете).
-2. Автоопределение IP, генерация **Reality-ключей**, выбор протоколов подключения.
-3. Создание **логина и пароля администратора**.
+1. **Fresh install** OR **restore from a settings backup** (if you're migrating).
+2. IP auto-detection, generation of **Reality keys**, choice of connection protocols.
+3. Creating the **administrator login and password**.
 
-После завершения файлы мастера **удаляются автоматически**, дальше вход — через `login.php`.
+After it finishes, the wizard files are **removed automatically**; from then on you
+sign in via `login.php`.
 
-> Если панель на IP без домена — она работает по HTTP. Для HTTPS привяжите домен и
-> позже выполните `certbot --nginx -d ваш-домен`.
+> If the panel runs on an IP with no domain, it works over HTTP. For HTTPS, attach a
+> domain and later run `certbot --nginx -d your-domain`.
 
 ---
 
-## После установки — что настроить
+## After installation — what to configure
 
-Зайдите в панель под администратором и пройдите по шагам.
+Sign in to the panel as administrator and go through the steps.
 
-### 1. Добавьте exit-сервер (куда уводить трафик)
+### 1. Add an exit server (where to divert traffic)
 
-`Серверы` → добавить exit-сервер (любой регион на ваш выбор). Поддерживаются протоколы
+`Servers` → add an exit server (any region of your choice). Supported protocols:
 `amneziawg`, `wireguard`, `vless`, `shadowsocks`, `hysteria2`, `tuic`, `trojan`.
-Панель может **сама установить ПО** на exit по SSH (провижининг) — для этого укажите
-доступ к серверу; SSH-ключ хранится в БД в зашифрованном виде.
+The panel can **install the software itself** on the exit over SSH (provisioning) —
+just provide server access; the SSH key is stored encrypted in the database.
 
-### 2. Проверьте протоколы входа устройств
+### 2. Check the device inbound protocols
 
-`Настройки` → «Протоколы подключения устройств». Включите нужные (VLESS+Reality —
-рекомендуется). Порты, которые надо открыть в firewall хостера, панель подскажет.
+`Settings` → "Device connection protocols". Enable what you need (VLESS+Reality is
+recommended). The panel tells you which ports to open in the host's firewall.
 
-### 3. Создайте маршруты (что уводить через exit)
+### 3. Create routes (what to send through the exit)
 
-`Маршруты` → создайте группу и правила: домены (`youtube.com`), подсети (`ip_cidr`),
-geosite-категории. Привяжите группу к exit-серверу или к **набору серверов** (Server Set)
-с автопереключением. Всё, что не попало в правила, идёт напрямую с VPS.
+`Routes` → create a group and rules: domains (`youtube.com`), subnets (`ip_cidr`),
+geosite categories. Attach the group to an exit server or to a **server set** with
+automatic failover. Anything not matched by a rule goes directly from the VPS.
 
-### 4. Добавьте устройство
+### 4. Add a device
 
-`Устройства` → «Мастер добавления устройства»: выберите тип (Телефон/Планшет/Компьютер/Роутер),
-протокол — панель выдаст ссылку/QR/файл конфигурации. Если протокол выключен, мастер
-предложит включить его.
+`Devices` → "Add device wizard": pick the type (Phone/Tablet/Computer/Router) and the
+protocol — the panel issues a link/QR/config file. If the protocol is disabled, the
+wizard offers to enable it.
 
-### 5. Примените конфигурацию
+### 5. Apply the configuration
 
-Кнопка **«Применить»**. Панель соберёт конфиг sing-box + туннели, провалидирует и
-перезапустит службу. Есть предпросмотр и откат к предыдущей версии.
+The **"Apply"** button. The panel assembles the sing-box config + tunnels, validates
+it and restarts the service. There is a preview and a roll back to the previous version.
 
-### Полезное после запуска
+### Useful things after launch
 
-- **Умный DNS** (`Настройки`) — перехват DNS и резолв «заграничных» доменов через exit.
-  Лечит ситуацию, когда сайт не открывается из-за подмены DNS (например YouTube на Smart TV).
-- **Блокировка рекламы / QUIC** (`Настройки`) — режет рекламные домены и QUIC (убирает
-  зависания видео через прокси).
-- **Роутер Keenetic**: на странице `Маршруты` — кнопки выгрузки. `.bat` с командами
-  `route ADD` (домены резолвятся в IP, файл автоматически бьётся на части по лимиту
-  роутера в 1024 маршрута — если частей несколько, скачается ZIP). Рядом — экспорт для
-  HydraRoute (`domain.conf` + `ip.list` по политикам).
-- **Пресеты и внешние списки** (`Маршруты`) — быстрые наборы geosite (YouTube, Google и
-  др.) и импорт внешних списков (Antizapret/URL). Если сайт-источник сам недоступен
-  напрямую, включите загрузку списка через exit (SOCKS).
-- **Route Inspector** (`Маршруты`) — проверка «куда пойдёт этот домен/IP»: через какое
-  правило и какой exit.
-- **Живые данные**: `Дашборд` — скорость/устройства онлайн/аптайм/здоровье exit'ов;
-  `Соединения` — активные сессии; `Трафик` — суммы и разбивка; `Логи` — журнал sing-box.
-- **Предупреждения перед применением**: предпросмотр отмечает битые ссылки в правилах,
-  несовместимость с версией sing-box, спорные параметры AmneziaWG и риск утечки по IPv6
-  (если у сервера есть публичный IPv6, а exit'ы только IPv4).
-- **Двухфакторка**: `Настройки` → включить TOTP для входа.
-- **Крон** (рекомендуется), примеры:
+- **Smart DNS** (`Settings`) — DNS interception and resolving exit-bound domains through
+  the exit. Fixes the case where a site won't open due to DNS substitution (e.g. YouTube
+  on a Smart TV).
+- **Ad / QUIC blocking** (`Settings`) — blocks ad domains and QUIC (removes video stalls
+  through the proxy).
+- **Keenetic router**: on the `Routes` page — export buttons. A `.bat` with `route ADD`
+  commands (domains are resolved to IPs, the file is split automatically into parts by
+  the router's 1024-route limit — if there are several parts, a ZIP is downloaded).
+  Next to it — HydraRoute export (`domain.conf` + `ip.list` by policy).
+- **Presets and external lists** (`Routes`) — quick geosite sets (YouTube, Google, etc.)
+  and import of external lists (Antizapret/URL). If the source site itself is not
+  directly reachable, enable fetching the list through the exit (SOCKS).
+- **Route Inspector** (`Routes`) — checks "where will this domain/IP go": through which
+  rule and which exit.
+- **Live data**: `Dashboard` — rate/devices online/uptime/exit health; `Connections` —
+  active sessions; `Traffic` — totals and breakdown; `Logs` — the sing-box journal.
+- **Pre-apply warnings**: the preview flags broken references in rules, incompatibility
+  with the sing-box version, questionable AmneziaWG parameters and the risk of an IPv6
+  leak (if the server has a public IPv6 while the exits are IPv4-only).
+- **Two-factor**: `Settings` → enable TOTP for sign-in.
+- **Cron** (recommended), examples:
   ```cron
   */5 * * * *  php /var/www/panel/bin/collect_traffic.php
   0 * * * *    php /var/www/panel/bin/collect_exit_load.php
@@ -315,66 +322,66 @@ geosite-категории. Привяжите группу к exit-сервер
   0 */6 * * *  php /var/www/panel/bin/security_scan.php
   0 */6 * * *  php /var/www/panel/bin/check_updates.php
   ```
-- **Проверка обновлений** (`Настройки` → «Обновления»): укажите RAW-URL файла версии
-  вашего репозитория (`panel/VERSION` или JSON релиза) и адрес репозитория. Панель сверит
-  версии и покажет баннер «доступно обновление». Обновление кода — это деплой новой версии;
-  миграции БД после выкладки применяются автоматически.
-- **Сброс пароля админа** (если забыли), на сервере:
+- **Update check** (`Settings` → "Updates"): point it at the RAW URL of your repo's
+  version file (`panel/VERSION` or a release JSON) and the repository address. The panel
+  compares versions and shows an "update available" banner. Updating the code is a deploy
+  of a new version; DB migrations are applied automatically afterwards.
+- **Admin password reset** (if forgotten), on the server:
   ```bash
-  php /var/www/panel/bin/create-admin.php <логин>
+  php /var/www/panel/bin/create-admin.php <login>
   ```
 
 ---
 
-## Что может потребоваться / частые вопросы
+## Things you might need / FAQ
 
-- **Нет домена.** Ок — панель работает по IP по HTTP. Для HTTPS нужен домен + `certbot`.
-- **Устройство за роутером не открывает сайт (ошибка DNS).** Устройство должно быть
-  заведено в туннель на самом роутере (политика маршрутизации), плюс включите «Умный DNS».
-- **Часть трафика идёт мимо туннеля (утечка по IPv6).** Если у сервера/устройств есть
-  публичный IPv6, а exit'ы работают только по IPv4, IPv6-трафик может пойти напрямую.
-  Панель предупредит об этом в предпросмотре; решение — отключить IPv6 на клиентах либо
-  использовать exit с IPv6.
-- **«Database is locked».** Панель уже в режиме WAL с таймаутом; при массовых операциях
-  просто повторите. Если PHP кешировал старый код — перезапустите php-fpm.
-- **Смена `app_secret`.** НЕЛЬЗЯ на заполненной базе — сделает сохранённые SSH-ключи
-  нерасшифровываемыми. Берегите его как пароль root.
-- **Резервная копия.** Настройки можно выгрузить и восстановить через мастер (`Настройки` →
-  экспорт; при установке — «восстановление из копии»).
+- **No domain.** Fine — the panel works over an IP via HTTP. For HTTPS you need a domain
+  + `certbot`.
+- **A device behind the router won't open a site (DNS error).** The device must be added
+  to the tunnel on the router itself (routing policy), and enable "Smart DNS".
+- **Some traffic bypasses the tunnel (IPv6 leak).** If the server/devices have a public
+  IPv6 while the exits are IPv4-only, IPv6 traffic may go directly. The panel warns about
+  this in the preview; the fix is to disable IPv6 on the clients or use an exit with IPv6.
+- **"Database is locked".** The panel already runs in WAL mode with a timeout; on bulk
+  operations just retry. If PHP cached old code — restart php-fpm.
+- **Changing `app_secret`.** NOT allowed on a populated database — it makes the stored SSH
+  keys undecryptable. Guard it like the root password.
+- **Backup.** Settings can be exported and restored through the wizard (`Settings` →
+  export; at install time — "restore from backup").
 
 ---
 
-## Разработка и тесты
+## Development and tests
 
 ```bash
 cd panel
-composer install            # зависимости (+dev)
-vendor/bin/phpunit          # прогнать тесты
+composer install            # dependencies (+dev)
+vendor/bin/phpunit          # run tests
 ```
 
-Код панели — PSR-4 автозагрузка (`App\` → `src/`). Единственный движок маршрутизации —
-sing-box; панель только генерирует его конфиг и применяет одной sudo-командой без аргументов.
+The panel code uses PSR-4 autoloading (`App\` → `src/`). The only routing engine is
+sing-box; the panel merely generates its config and applies it with a single argument-less
+sudo command.
 
 ---
 
-## Поддержать проект
+## Support the project
 
-Проект развивается в свободное время. Если он вам полезен — можно поддержать:
+The project is developed in spare time. If you find it useful, you can support it:
 
 ### ❤ [Boosty — boosty.to/iygen/donate](https://boosty.to/iygen/donate)
 
-Любой донат — добровольный и не даёт прав на приоритетную поддержку; это просто
-«спасибо» автору. Спасибо! 🙏
+Any donation is voluntary and grants no right to priority support; it's just a "thank
+you" to the author. Thanks! 🙏
 
-## Лицензия
+## License
 
-Распространяется под **GNU Affero General Public License v3.0 (AGPLv3)** — см.
+Distributed under the **GNU Affero General Public License v3.0 (AGPLv3)** — see
 [`LICENSE`](LICENSE).
 
-Коротко: можно свободно пользоваться, изучать и дорабатывать. Но если вы
-изменяете панель и **предоставляете её другим как сетевой сервис**, вы обязаны
-опубликовать исходный код своей версии под той же лицензией. Это защищает проект
-от закрытой коммерческой переработки без вклада обратно.
+In short: you may freely use, study and modify it. But if you modify the panel and
+**provide it to others as a network service**, you must publish the source code of your
+version under the same license. This protects the project from closed commercial
+re-use without contributing back.
 
 © 2026 Ygen.
-
