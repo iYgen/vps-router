@@ -13,6 +13,8 @@ with the mouse on a visual graph, without editing configs by hand.
 > several connection protocols and multiple routers, and a built-in setup wizard
 > right in the browser.
 
+![vps_router — infrastructure graph and panel](docs/eng.png)
+
 ---
 
 ## Why you'd want it
