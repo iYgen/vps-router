@@ -9,9 +9,13 @@ directly from the VPS itself, while selected sites (e.g. YouTube, Claude, etc.) 
 through an intermediate "exit server" in another country. Everything is configured
 with the mouse on a visual graph, without editing configs by hand.
 
+It can also run as a small **service**: an optional billing module (plans,
+subscribers, online payment), a self-service client portal, a visual public-site &
+cabinet builder, and a module system to turn features on and off.
+
 > In short: one entry point, rule-based selective routing, a clear server graph,
-> several connection protocols and multiple routers, and a built-in setup wizard
-> right in the browser.
+> several connection protocols and multiple routers, active protection and anti-DPI,
+> an optional billing/portal, and a built-in setup wizard right in the browser.
 
 ![vps_router — infrastructure graph and panel](docs/eng.png)
 
@@ -31,6 +35,13 @@ with the mouse on a visual graph, without editing configs by hand.
   ordinary HTTPS), Shadowsocks, Trojan, Hysteria2 or WireGuard/AmneziaWG.
 - **Keenetic router out of the box.** Route export for a home router and "smart DNS"
   so that devices behind the router (e.g. a Smart TV) work correctly.
+- **Resilience built in.** Server-set failover, active reachability monitoring,
+  optional anti-DPI (packet-level desync with automatic verify + rollback), and
+  pre-apply warnings (broken rules, version mismatch, IPv6 leak).
+- **Can run as a service.** Optional billing with online payment, a client
+  self-service portal, and a visual builder for a public site and personal cabinet.
+- **Modular.** Router support and extra features are modules you install, activate
+  and remove right in the panel.
 
 ---
 
@@ -59,127 +70,156 @@ with the mouse on a visual graph, without editing configs by hand.
    in the config, not a tunnel rebuild.
 4. Tunnels to exit servers stay up permanently, so switches happen without pauses.
 
+---
+
+## Features
+
+### Routing & infrastructure
+- Visual infrastructure **graph** (Cytoscape.js): servers, links, device nodes.
+- **Rule groups**: domains, `ip_cidr` subnets and geosite categories; curated
+  **presets** (YouTube, Google, etc.) and import of **external lists** (Antizapret/URL),
+  optionally fetched through an exit (SOCKS) when the source is not directly reachable.
+- **Server sets** with automatic **failover**; switching the active exit is an instant
+  config relabel, not a tunnel rebuild.
+- **Route Inspector**: "where will this domain/IP go — through which rule and exit".
+- **Multi-router**: manage several router nodes from one panel.
+
+### Devices & protocols
+- Inbounds: **VLESS+Reality** (disguised as ordinary HTTPS), **Shadowsocks**, **Trojan**,
+  **Hysteria2**, **WireGuard/AmneziaWG**.
+- Add-device wizard: pick type and protocol → link/QR/config file.
+- **Client policies** (per-device routing), **smart DNS**, ad/QUIC blocking.
+- **Keenetic** route export (`.bat` with `route ADD`, ZIP splitting by the 1024-route
+  limit) and **HydraRoute** export (`domain.conf` + `ip.list`); API sync.
+
+### Observability
+- Live **dashboard** KPIs (rate, devices online, uptime, exit health), **connections**
+  (country flags, traffic, exit, age), **traffic** (totals / today / 30 days, by exit
+  and device) and **extended per-server traffic stats**, **logs** (sing-box journal).
+
+### Security & resilience
+- **Active protection** (module): tracks exit-node reachability over time from local and
+  external vantage points (early detection of availability loss by divergence) plus
+  optional collection of inbound probing on the Reality port — gathered by the panel over
+  outbound SSH, no agent on the exit.
+- **Connection resiliency / anti-DPI**: TLS fragment on the client config, and optional
+  packet-level DPI desync (**zapret/nfqws**) applied **only** to traffic to your exit
+  IPs:443, with bypass and **automatic verify + rollback** if a strategy breaks the path.
+- **Reality camouflage front** (optional): a disguising TLS front site (Caddy) with a
+  Let's Encrypt certificate.
+- **WireGuard handshake monitor**, risk/security scanners, port-knock & port-scan ban,
+  **2FA (TOTP)**, encrypted SSH keys (`app_secret`), scheduled reboots and **email alerts**
+  on server incidents.
+
+### Telegram proxy (module)
+- A dedicated **MTProto** (mtg, FakeTLS) and/or **SOCKS5** proxy for the Telegram
+  messenger on a chosen node, managed from the server inspector: enable/disable, port,
+  secret regeneration, ready-made `tg://` link and QR.
+
+### Commercial mode (optional)
+- **Billing** (paid module): plans with price (down to kopecks), traffic quota
+  (fractional GB) and device limits; subscribers & subscriptions with expiry and
+  **automatic device shut-off**; manual payments and online payment via gateways
+  (**YooKassa / CryptoCloud**) confirmed by webhook; an **internal balance**, **add-ons**
+  (extra traffic/device), **plan change** with proration, **cancellation** with partial
+  refund; **email renewal reminders**.
+- **Self-service portal**: subscribers sign in, confirm email, change/reset password,
+  see their subscription, traffic usage and device limit, manage devices and pay online.
+- **Site & cabinet builder** (paid module): a visual builder for a public landing site
+  and the personal cabinet — 5 structural templates, palette/typography, hero, arbitrary
+  sections, pricing cards driven by real billing data, live preview and publish, with
+  host-based routing (site on your domain, panel on `panel.your-domain`).
+
+### Modules & updates
+- **Module system**: router support and extra features are modules — installed,
+  activated and removed in the panel; third-party `.vmod` archives; some modules are paid
+  and activated manually.
+- **Update check**: compares the panel version against your repository's version file and
+  shows an "update available" banner; DB migrations can be applied from the UI.
+
+---
+
 <details>
-<summary><b>📁 What each file is responsible for (click to expand)</b></summary>
+<summary><b>📁 Repository & file layout (click to expand)</b></summary>
 
 ### Repository root
 
 | Path | Purpose |
 |------|---------|
-| `README.md` | this file |
-| `LICENSE` | license |
+| `README.md` / `README.ru.md` | this file (EN / RU) |
+| `LICENSE` | license (AGPLv3) |
 | `deploy/` | everything for installing on servers (scripts, nginx, sudoers, provisioning) |
 | `panel/` | the PHP panel code itself (deployed to the VPS at `/var/www/panel`) |
 
-### `panel/` — panel code
-
-| Path | Purpose |
-|------|---------|
-| `composer.json` / `composer.lock` | PHP dependencies (see the "Software" spoiler) |
-| `config.php.example` | config template → copied to `/etc/panel/config.php` outside the webroot |
-| `phpunit.xml` | test configuration |
-| `public/` | webroot — what the browser sees |
-| `src/` | application classes (logic) |
-| `src/Models/` | data models (working with SQLite tables) |
-| `migrations/` | SQL schema migrations (applied in order) |
-| `bin/` | CLI scripts (cron, maintenance) |
-| `lang/` | interface translations (`ru.php`, `en.php`) |
-| `tests/` | PHPUnit tests |
-
 ### `panel/public/` — pages (webroot)
 
-| File | Purpose |
-|------|---------|
-| `index.php` | entry point / redirect |
-| `install.php` | **visual setup wizard** (available until an admin exists) |
-| `login.php`, `logout.php` | sign in/out |
-| `forgot-password.php`, `reset-password.php` | password recovery |
-| `dashboard.php` | **main screen — infrastructure graph** + live KPIs (rate, devices online, uptime, exit health) |
-| `servers.php` | servers and exit servers |
-| `groups.php`, `group.php` | routes (rule groups) + presets, external-list import, Route Inspector, Keenetic/HydraRoute export |
-| `devices.php`, `device-config.php` | devices (icons by type, status, traffic ↓↑) and the add wizard, config/link delivery |
-| `traffic.php` | traffic: total / today / 30 days, by exit, by device |
-| `connections.php` | live sessions (country flags, traffic, exit, connection age) |
-| `logs.php` | sing-box journal viewer (journalctl) |
-| `settings.php` | settings: protocols, ad/QUIC blocking, smart DNS, privacy, password/2FA change |
-| `client-policy.php` | client policies |
-| `wg-peers.php`, `wg-peer-config.php` | WireGuard peers and their configs |
-| `audit.php` | action log |
-| `api/*.php` | JSON API for the graph and pages (servers, connections, routes, traffic, keenetic-export, etc.) |
-| `assets/` | static files: fonts, graph JS (Cytoscape.js), styles |
+- Core: `index.php`, `install.php` (setup wizard), `login`/`logout`, `forgot-password`,
+  `reset-password`, `dashboard.php` (infrastructure graph + live KPIs).
+- Routing & servers: `servers.php`, `groups.php`/`group.php` (routes, presets, import,
+  Route Inspector, Keenetic/HydraRoute export), `devices.php`/`device-config.php`,
+  `wg-peers.php`/`wg-peer-config.php`, `client-policy.php`.
+- Observability: `traffic.php`, `connections.php`, `logs.php`, `audit.php`.
+- Settings & modules: `settings.php`, `modules.php`.
+- Commercial: `billing.php`, `portal.php` + `portal-login.php` / `portal-verify.php` /
+  `portal-reset.php`, `site-builder.php`, `site.php` (public site / cabinet).
+- `api/*.php` — JSON API for the graph and pages (servers, connections, routes, traffic,
+  modules, billing-webhook, probe-intel, zapret, antidpi, tgproxy, updates, packages,
+  reboot-schedule, site-domain-check, keenetic-export, etc.).
+- `assets/` — static files: fonts, graph JS (Cytoscape.js), styles.
 
 ### `panel/src/` — key classes
 
-| File | Purpose |
-|------|---------|
-| `bootstrap.php` | initialization (autoload, config, session, i18n) |
-| `App.php` | access to the app config |
-| `Database.php` | SQLite connection (WAL mode, migrations) |
-| `Auth.php`, `Totp.php` | authentication, two-factor (TOTP) |
-| `Secrets.php` | encryption of secrets (servers' SSH keys) with `app_secret` |
-| `Ssh.php` | SSH client (phpseclib) — connection test, provisioning |
-| `SingboxConfigBuilder.php` | **builds the sing-box config** from the database; orchestrator over `Singbox\*` (rules, DNS, inbound/outbound) |
-| `Singbox/*` | modular builders: `ExitOutboundBuilder`, `RuleSetRegistry`, `RouteBuilder`, `DnsBuilder`, `InboundsBuilder`, `ConfigValidator` (pre-validation of references + version warnings) |
-| `SingboxVersion.php`, `SingboxLog.php` | version of the installed sing-box, journal reading (journalctl) |
-| `RouteInspector.php`, `RoutePresets.php` | "where a domain/IP will go" + curated geosite presets (youtube, google, etc.) |
-| `ExternalListImporter.php` | external-list import (Antizapret/URL), optional fetch via exit (SOCKS), SSRF guard |
-| `HydraRouteExport.php` | route export for HydraRoute (`domain.conf` + `ip.list` by policy) |
-| `Amnezia/AwgParams.php`, `Amnezia/AwgKernel.php` | AmneziaWG obfuscation validation, awg-quick/kernel-module detection |
-| `LocalSystem.php` | info about the node itself without SSH (load, sing-box status, public IPv6) |
-| `AmneziaConfigBuilder.php` | builds AmneziaWG/WireGuard configs |
-| `Applier.php` | preview/validate/**apply**/roll back the configuration |
-| `DeviceInbounds.php` | device inbound protocols (VLESS/SS/Trojan/Hysteria2/WG) |
-| `ClientPolicyBuilder.php` | client-level routing policies |
-| `RouterContext.php` | current router context (multi-router) |
-| `Provisioner.php` | auto-install software on exit servers over SSH/SFTP |
-| `ExitServerFactory.php`, `ExitServerBalancer.php` | creation/balancing of exit servers |
-| `KeeneticExport.php` | route export for the router (`.bat` with `route ADD`, ZIP splitting) |
-| `KeeneticSyncService.php` | route sync with Keenetic via API |
-| `TrafficCollector.php`, `ServerTraffic.php` | device/server traffic accounting |
-| `Installer.php` | setup/restore wizard logic |
-| `PanelBackup.php` | backup of panel settings |
-| `Diagnostics.php`, `BlockChecker.php`, `NetworkInfo.php` | reachability diagnostics, IP detection |
-| `RiskScanner.php`, `SecurityAudit.php` | risk/security scanners |
-| `IpListImporter.php`, `FreeSubscriptions.php` | IP-list import, free subscriptions/pools |
-| `I18n.php`, `View.php` | localization and page rendering |
-| `Http.php`, `Mailer.php` | HTTP helpers, mail sending |
-
-### `panel/src/Models/` — DB models
-
-`Server`, `ExitServer`, `ExitServerPeer`, `ExitServerLoad`, `Connection`,
-`ServerSet`, `RuleGroup` / `Rule` (routes), `Client` (device),
-`PolicyProfile` / `PolicyDevice` / `PolicyVersion` (policies), `ConfigVersion` (config versions),
-`NodeSetting` / `Setting` (node/global settings), `AuditLog`, `RiskScanResult`.
+- Config engine: `SingboxConfigBuilder` + `Singbox/*` (`ExitOutboundBuilder`,
+  `RuleSetRegistry`, `RouteBuilder`, `DnsBuilder`, `InboundsBuilder`, `ConfigValidator`),
+  `AmneziaConfigBuilder`, `DeviceInbounds`, `ClientPolicyBuilder`, `Applier`,
+  `RealityKeys`, `CamouflageFront`.
+- Nodes & provisioning: `Ssh`, `Provisioner`, `PackageManager`, `ExitServerFactory`,
+  `ExitServerBalancer`, `RouterContext`, `LocalSystem`, `NetworkInfo`, `GeoIp`.
+- Routing helpers: `RouteInspector`, `RoutePresets`, `ExternalListImporter`,
+  `IpListImporter`, `KeeneticExport`, `KeeneticSyncService`, `HydraRouteExport`,
+  `RouterExport`, `InfrastructureExport`.
+- Security & resilience: `Diagnostics`, `BlockChecker`, `RiskScanner`, `SecurityAudit`,
+  `ProbeIntel`, `Zapret`, `WgMonitor`, `ServerAlerts`, `ServerIncidents`,
+  `ScheduledReboots`, `TgProxy`, `Secrets`, `Auth`, `Totp`.
+- Traffic & versions: `TrafficCollector`, `ServerTraffic`, `TrafficSeries`,
+  `UpdateChecker`, `Version`, `Installer`, `InstallRunner`, `PanelBackup`.
+- Commercial: `Billing`, `Billing/*` (`PaymentGateway`, `GatewayRegistry`,
+  `YooKassaGateway`, `CryptoCloudGateway`), `Portal*` (`PortalAuth`, `PortalView`,
+  `PortalMail`), `FreeSubscriptions`, `Site/*` (`DesignConfig`, `TemplateRegistry`,
+  `BusinessData`, `SiteContext`, `Site`, `Renderer/*` — 5 template renderers),
+  `Modules/*` (`ModuleCatalog`, `ModuleManager`).
+- Infra: `bootstrap.php`, `App`, `Database`, `I18n`, `View`, `Http`, `HttpResponse`,
+  `Mailer`.
+- `src/Models/` — `Server`, `ExitServer*`, `Connection`, `ServerSet`, `RuleGroup`/`Rule`,
+  `Client`, `Policy*`, `ConfigVersion`, `NodeSetting`/`Setting`, `AuditLog`,
+  `RiskScanResult`, and commercial models `Plan`, `Subscriber`, `Subscription`,
+  `Payment`, `SiteDesign`, `PortalTemplate`.
 
 ### `panel/bin/` — CLI and cron
 
-| File | Purpose |
-|------|---------|
-| `create-admin.php` | create/reset the administrator |
-| `collect_traffic.php` | collect device traffic (cron) |
-| `collect_exit_load.php` | collect exit-server load (cron) |
-| `sync-ip-lists.php` | update IP-subnet lists (cron) |
-| `free_pool_health.php`, `health_check.php`, `health_check_servers.php` | health checks |
-| `risk_scan.php`, `security_scan.php` | risk and update scans (cron) |
-| `encrypt-exit-secrets.php`, `fix-reality-key-encoding.php` | one-off maintenance scripts |
+`create-admin.php`, `collect_traffic.php`, `collect_exit_load.php`, `sync-ip-lists.php`,
+`free_pool_health.php`, `health_check.php`, `health_check_servers.php`, `risk_scan.php`,
+`security_scan.php`, `probe_intel.php` (active protection), `check_updates.php`,
+`scheduled_reboots.php`, `billing_tick.php` (expiry/reminders), plus one-off maintenance
+scripts (`encrypt-exit-secrets.php`, `fix-reality-key-encoding.php`).
 
 ### `deploy/` — installing on servers
 
-| Path | Purpose |
-|------|---------|
-| `install.sh` | **interactive installer** on a fresh VPS (`sudo bash deploy/install.sh`) |
-| `router/` | everything for a router node: `apply-router.sh`, sudoers, nginx vhost, firewall, hardening, README |
-| `exit/` | exit-node setup guide |
-| `exit-front/` | exit with a disguising TLS front (reality-front) |
-| `provision/` | auto-install scripts: software install on a node, `router-apply.sh`, `exit-*.sh`, hardening, wg peers |
+`install.sh` (interactive installer), `router/` (router-node assets: `apply-router.sh`,
+sudoers, nginx vhost, firewall, hardening), `exit/` and `exit-front/` (exit-node setup,
+reality front), `provision/` (`entry-vps-install.sh`, `router-apply.sh`, `exit-*.sh`,
+`entry-zapret.sh`, `entry-tgproxy.sh`, `entry-wg-status.sh`, hardening, wg peers).
 
-### `migrations/` — DB schema (in order)
+### `migrations/` — DB schema (31 steps, applied in order)
 
-`001` base · `002` infrastructure (graph) · `003` multi-protocol · `004` route
-hierarchy · `005` wg peers · `006` port-knock · `007` client policies · `008`
-risk-scan / scanner ban · `009` login security · `010` exit-server pool and load ·
-`011` device inbounds · `012` device traffic · `013` traffic total/quotas · `014`
-user language · `015` multi-router · `016` free exits · `017` two-factor (TOTP).
+`001` base · `002` infrastructure graph · `003` multi-protocol · `004` route hierarchy ·
+`005` wg peers · `006` port-knock · `007` client policies · `008` risk-scan / scanner ban ·
+`009` login security · `010` exit-server pool & load · `011` device inbounds ·
+`012` device traffic · `013` traffic totals/quota · `014` user language · `015` multi-router ·
+`016` free exits · `017` 2FA (TOTP) · `018` device type · `019` exit latency · `020` modules ·
+`021` scheduled reboots · `022` server incidents · `023` probe intel · `024` probe blocks ·
+`025` billing · `026` billing portal · `027` portal branding · `028` portal layouts ·
+`029` site designs · `030` subscriber password reset · `031` billing balance & add-ons.
 
 </details>
 
@@ -195,7 +235,10 @@ user language · `015` multi-router · `016` free exits · `017` two-factor (TOT
 | **sing-box** | the routing engine (the only one) | yes |
 | **nginx** | web server for the panel (a separate vhost) | yes |
 | **AmneziaWG / WireGuard** (`amneziawg-tools`) | tunnels to exit servers and WG inbound | optional* |
-| **certbot** | free TLS certificate for the panel's domain | optional |
+| **nfqws** (zapret) | packet-level anti-DPI desync (only when enabled) | optional |
+| **mtg** | MTProto proxy binary for the Telegram-proxy module | optional |
+| **Caddy** | disguising TLS front for the Reality camouflage front | optional |
+| **certbot** | free TLS certificate for the panel's / site's domain | optional |
 | **fail2ban** | brute-force protection (recommended) | optional |
 
 \* Without AmneziaWG the other protocols (VLESS, Shadowsocks, Trojan, Hysteria2) still work.
@@ -209,7 +252,7 @@ user language · `015` multi-router · `016` free exits · `017` two-factor (TOT
 
 ### Client side (already vendored in the repo, npm not needed)
 
-- **Cytoscape.js** + **edgehandles** — rendering of the infrastructure graph. They live in
+- **Cytoscape.js** + **edgehandles** — rendering of the infrastructure graph, in
   `panel/public/assets/vendor/`, no build step required.
 
 </details>
@@ -294,6 +337,27 @@ wizard offers to enable it.
 The **"Apply"** button. The panel assembles the sing-box config + tunnels, validates
 it and restarts the service. There is a preview and a roll back to the previous version.
 
+### Optional: modules, commercial mode and protection
+
+- **Modules** (`Modules`): turn features on/off — active protection, extra traffic stats,
+  billing, the site & cabinet builder, the Telegram proxy, router support (Keenetic /
+  MikroTik / OpenWrt), update check, route presets, free public nodes. Install
+  third-party `.vmod` archives here too.
+- **Billing** (`Billing`, when the module is on): create plans (price, traffic quota,
+  device limit), manage subscribers and subscriptions, accept manual or online payments
+  (YooKassa / CryptoCloud), top up the internal balance, sell add-ons and change/cancel
+  plans. Expiry shut-off and email reminders run via the `billing_tick.php` cron.
+- **Self-service portal / public site** (`Site & cabinet`, when the builder module is on):
+  design a public landing site and the personal cabinet, set the site domain, and let
+  subscribers sign in, confirm email, manage devices and pay online.
+- **Telegram proxy** (server inspector → "Telegram proxy", when the module is on): enable
+  an MTProto (mtg) and/or SOCKS5 proxy on a node and share the ready-made `tg://` link/QR.
+- **Active protection** (server inspector, when the module is on): monitor reachability
+  over time and, optionally, collect inbound probing on the Reality port.
+- **Connection resiliency / anti-DPI** (`Settings`): enable TLS fragment or packet-level
+  desync (zapret/nfqws) toward your exits; a strategy is verified and rolled back
+  automatically if it breaks the path.
+
 ### Useful things after launch
 
 - **Smart DNS** (`Settings`) — DNS interception and resolving exit-bound domains through
@@ -302,32 +366,30 @@ it and restarts the service. There is a preview and a roll back to the previous 
 - **Ad / QUIC blocking** (`Settings`) — blocks ad domains and QUIC (removes video stalls
   through the proxy).
 - **Keenetic router**: on the `Routes` page — export buttons. A `.bat` with `route ADD`
-  commands (domains are resolved to IPs, the file is split automatically into parts by
-  the router's 1024-route limit — if there are several parts, a ZIP is downloaded).
-  Next to it — HydraRoute export (`domain.conf` + `ip.list` by policy).
-- **Presets and external lists** (`Routes`) — quick geosite sets (YouTube, Google, etc.)
-  and import of external lists (Antizapret/URL). If the source site itself is not
-  directly reachable, enable fetching the list through the exit (SOCKS).
-- **Route Inspector** (`Routes`) — checks "where will this domain/IP go": through which
-  rule and which exit.
-- **Live data**: `Dashboard` — rate/devices online/uptime/exit health; `Connections` —
-  active sessions; `Traffic` — totals and breakdown; `Logs` — the sing-box journal.
+  commands (domains resolved to IPs, split into parts by the router's 1024-route limit —
+  a ZIP if there are several parts). Next to it — HydraRoute export.
+- **Route Inspector** (`Routes`) — checks "where will this domain/IP go".
 - **Pre-apply warnings**: the preview flags broken references in rules, incompatibility
   with the sing-box version, questionable AmneziaWG parameters and the risk of an IPv6
   leak (if the server has a public IPv6 while the exits are IPv4-only).
 - **Two-factor**: `Settings` → enable TOTP for sign-in.
+- **Scheduled reboots & incident alerts**: schedule periodic reboots and get email alerts
+  when a server goes down.
 - **Cron** (recommended), examples:
   ```cron
   */5 * * * *  php /var/www/panel/bin/collect_traffic.php
   0 * * * *    php /var/www/panel/bin/collect_exit_load.php
+  */10 * * * * php /var/www/panel/bin/probe_intel.php
   30 3 * * *   php /var/www/panel/bin/sync-ip-lists.php
   0 */6 * * *  php /var/www/panel/bin/security_scan.php
   0 */6 * * *  php /var/www/panel/bin/check_updates.php
+  */5 * * * *  php /var/www/panel/bin/billing_tick.php
+  * * * * *    php /var/www/panel/bin/scheduled_reboots.php
   ```
 - **Update check** (`Settings` → "Updates"): point it at the RAW URL of your repo's
   version file (`panel/VERSION` or a release JSON) and the repository address. The panel
-  compares versions and shows an "update available" banner. Updating the code is a deploy
-  of a new version; DB migrations are applied automatically afterwards.
+  compares versions and shows an "update available" banner, and can apply pending DB
+  migrations. Updating the code itself is a deploy of a new version.
 - **Admin password reset** (if forgotten), on the server:
   ```bash
   php /var/www/panel/bin/create-admin.php <login>
@@ -344,6 +406,10 @@ it and restarts the service. There is a preview and a roll back to the previous 
 - **Some traffic bypasses the tunnel (IPv6 leak).** If the server/devices have a public
   IPv6 while the exits are IPv4-only, IPv6 traffic may go directly. The panel warns about
   this in the preview; the fix is to disable IPv6 on the clients or use an exit with IPv6.
+- **The public site opens "a different site".** Setting the site domain in the builder is
+  not enough — that hostname must also be pointed at this panel (A-record + an nginx vhost
+  on the panel's docroot). The builder has a "Check domain" button that diagnoses exactly
+  this (no A-record / wrong IP / another vhost serving the domain).
 - **"Database is locked".** The panel already runs in WAL mode with a timeout; on bulk
   operations just retry. If PHP cached old code — restart php-fpm.
 - **Changing `app_secret`.** NOT allowed on a populated database — it makes the stored SSH
