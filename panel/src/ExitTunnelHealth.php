@@ -75,13 +75,12 @@ class ExitTunnelHealth
         $key = 'exit_tunnel_state_' . (int) $es['id'];
         $state = json_decode((string) Setting::get($key, ''), true) ?: ['status' => 'unknown', 'fails' => 0, 'dead' => []];
 
-        $dead = array_keys(array_filter($result['ports'], fn($d) => $d === null));
-        sort($dead);
+        [$dead, $streaks] = self::deadPorts($result['ports'], (array) ($state['dead'] ?? []), (array) ($state['streaks'] ?? []));
         $fails = $result['ok'] ? 0 : ((int) $state['fails'] + 1);
         $status = $result['ok'] ? 'up' : ($fails >= self::DOWN_AFTER ? 'down' : $state['status']);
 
         $mail = self::transitionMail($es, $state, $status, $dead, $result);
-        Setting::set($key, json_encode(['status' => $status, 'fails' => $fails, 'dead' => $dead]));
+        Setting::set($key, json_encode(['status' => $status, 'fails' => $fails, 'dead' => $dead, 'streaks' => $streaks]));
 
         if ($mail && ServerAlerts::enabled() && ($to = ServerAlerts::recipient())) {
             try {
@@ -133,6 +132,34 @@ class ExitTunnelHealth
             }
         }
         return null;
+    }
+
+    /**
+     * Гистерезис по портам: одиночные таймауты пробы под нагрузкой — норма,
+     * поэтому порт считается мёртвым после DOWN_AFTER неудач подряд и живым
+     * снова — после DOWN_AFTER удач подряд. Серия: >0 — удачи, <0 — неудачи.
+     *
+     * @param array<int,?int> $ports
+     * @return array{0:int[],1:array<int,int>} [мёртвые порты, новые серии]
+     */
+    public static function deadPorts(array $ports, array $prevDead, array $prevStreaks): array
+    {
+        $dead = array_map('intval', $prevDead);
+        $streaks = [];
+        foreach ($ports as $port => $delay) {
+            $s = (int) ($prevStreaks[$port] ?? 0);
+            $s = $delay === null ? min($s, 0) - 1 : max($s, 0) + 1;
+            $streaks[$port] = $s;
+            if ($s <= -self::DOWN_AFTER && !in_array($port, $dead, true)) {
+                $dead[] = $port;
+            } elseif ($s >= self::DOWN_AFTER) {
+                $dead = array_values(array_diff($dead, [$port]));
+            }
+        }
+        // Порты, которых больше нет в конфиге, забываем.
+        $dead = array_values(array_intersect($dead, array_keys($ports)));
+        sort($dead);
+        return [$dead, $streaks];
     }
 
     /** @param array<int,?int> $ports */

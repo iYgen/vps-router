@@ -86,6 +86,28 @@ class ExitAltPortsTest extends TestCase
         }
     }
 
+    public function testPortDeadOnlyAfterConsecutiveFailures(): void
+    {
+        $dead = [];
+        $streaks = [];
+        // Две неудачи, удача, ещё две — порт ещё не мёртв (моргание пробы).
+        foreach ([null, null, 20, null, null] as $d) {
+            [$dead, $streaks] = ExitTunnelHealth::deadPorts([443 => $d, 2053 => 30], $dead, $streaks);
+        }
+        $this->assertSame([], $dead);
+
+        [$dead, $streaks] = ExitTunnelHealth::deadPorts([443 => null, 2053 => 30], $dead, $streaks);
+        $this->assertSame([443], $dead);
+
+        // Одна удача не воскрешает, три подряд — да.
+        foreach ([20, 20] as $d) {
+            [$dead, $streaks] = ExitTunnelHealth::deadPorts([443 => $d, 2053 => 30], $dead, $streaks);
+            $this->assertSame([443], $dead);
+        }
+        [$dead] = ExitTunnelHealth::deadPorts([443 => 20, 2053 => 30], $dead, $streaks);
+        $this->assertSame([], $dead);
+    }
+
     public function testCanonicalTagStripsPortSuffix(): void
     {
         $this->assertSame('exit-6', ExitOutboundBuilder::canonicalTag('exit-6~p47443'));
