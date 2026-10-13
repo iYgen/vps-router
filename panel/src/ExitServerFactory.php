@@ -91,6 +91,10 @@ class ExitServerFactory
         // uuid — обычный идентификатор, не требует согласования с сервером,
         // генерируем сразу, если не передан явно.
         $params = ['uuid' => $v['uuid'] ?: self::uuidV4(), 'flow' => $v['flow'] ?? null, 'transport' => $transport];
+        // Резервные порты по умолчанию: если DPI начнёт резать основной порт,
+        // urltest на входной VPS уйдёт на живой (см. ExitOutboundBuilder::buildAll).
+        $mainPort = (int) ($v['endpoint_port'] ?? 443);
+        $params['alt_ports'] = isset($v['alt_ports']) ? array_map('intval', (array) $v['alt_ports']) : self::randomAltPorts($mainPort);
 
         switch ($transport) {
             case 'reality':
@@ -206,6 +210,19 @@ class ExitServerFactory
                 'password' => $t['password'] ?: bin2hex(random_bytes(16)),
             ],
         ]);
+    }
+
+    /** Два случайных высоких TCP-порта под резервные inbound'ы exit'а. */
+    private static function randomAltPorts(int $mainPort, int $count = 2): array
+    {
+        $ports = [];
+        while (count($ports) < $count) {
+            $p = random_int(20000, 59999);
+            if ($p !== $mainPort && !in_array($p, $ports, true)) {
+                $ports[] = $p;
+            }
+        }
+        return $ports;
     }
 
     private static function uuidV4(): string

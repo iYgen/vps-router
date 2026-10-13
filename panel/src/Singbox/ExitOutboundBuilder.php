@@ -14,10 +14,116 @@ class ExitOutboundBuilder
     /** Допустимые значения uTLS-фингерпринта (sing-box). */
     private const UTLS_FINGERPRINTS = ['chrome', 'firefox', 'edge', 'safari', 'ios', 'android', 'random', 'randomized'];
 
+    /** Сколько резервных портов максимум принимаем на один exit. */
+    public const MAX_ALT_PORTS = 4;
+
+    /** Проба для urltest-группы портов (лёгкий 204 без тела). */
+    public const PROBE_URL = 'https://www.gstatic.com/generate_204';
+
+    /**
+     * Мультиплекс входная VPS → exit: соединения устройств идут потоками внутри
+     * нескольких долгоживущих TLS-сессий, а не новым Reality-рукопожатием на
+     * каждое. Сотни рукопожатий в минуту с одного IP на один зарубежный IP —
+     * именно то, что DPI на пути душит. Exit-inbound принимает и mux, и
+     * обычные соединения, так что порядок выката не важен.
+     * С VLESS flow (xtls-rprx-vision) несовместим — тогда не включаем.
+     */
+    public const MULTIPLEX = ['enabled' => true, 'protocol' => 'h2mux', 'max_connections' => 4, 'min_streams' => 8];
+
+    /** Мультиплекс до exit'ов (Setting exit_multiplex, по умолчанию включён). */
+    public static function multiplexEnabled(): bool
+    {
+        return \App\Models\Setting::get('exit_multiplex', '1') !== '0';
+    }
+
     /** Тег outbound/endpoint в конфиге route для exit-сервера. */
     public static function tag(int $exitServerId): string
     {
         return 'exit-' . $exitServerId;
+    }
+
+    /** Тег outbound'а одного порта exit-сервера внутри urltest-группы. */
+    public static function memberTag(int $exitServerId, int $port): string
+    {
+        return self::tag($exitServerId) . '~p' . $port;
+    }
+
+    /** exit-6~p47443 → exit-6: в статистике/графиках порт-участник = сам exit. */
+    public static function canonicalTag(string $tag): string
+    {
+        return (string) preg_replace('/~p\d+$/', '', $tag);
+    }
+
+    /**
+     * Резервные порты exit-сервера (protocol_params.alt_ports): exit слушает
+     * их тем же inbound'ом, что и основной порт. Нужны, когда DPI на пути
+     * до exit начинает резать конкретный порт (бывает, что «умирает» :443 —
+     * Reality-рукопожатия портились, а на других портах всё проходило).
+     * Только VLESS: остальные протоколы пока без резервных портов.
+     *
+     * @return int[] валидные, уникальные, без основного порта
+     */
+    public static function altPorts(array $es): array
+    {
+        if (($es['protocol'] ?? '') !== 'vless') {
+            return [];
+        }
+        $params = !empty($es['protocol_params']) ? (json_decode($es['protocol_params'], true) ?: []) : [];
+        if (!empty($params['_raw'])) {
+            return [];
+        }
+        $main = (int) ($es['endpoint_port'] ?? 0);
+        $ports = [];
+        foreach ((array) ($params['alt_ports'] ?? []) as $p) {
+            $p = (int) $p;
+            if ($p >= 1 && $p <= 65535 && $p !== $main && !in_array($p, $ports, true)) {
+                $ports[] = $p;
+            }
+        }
+        return array_slice($ports, 0, self::MAX_ALT_PORTS);
+    }
+
+    /**
+     * Как build(), но с резервными портами: если они заданы, вместо одного
+     * outbound'а exit-N получаем по outbound'у на порт (exit-N~pPORT) и
+     * urltest-группу с тегом exit-N поверх них. Маршруты/DNS по-прежнему
+     * ссылаются на exit-N, а sing-box сам раз в минуту проверяет порты и
+     * уводит трафик на живой — без участия панели и без Apply.
+     *
+     * @return array{outbounds: array[], endpoint: ?array}
+     */
+    public static function buildAll(array $es): array
+    {
+        [$outbound, $endpoint] = self::build($es);
+        $alt = self::altPorts($es);
+        if (!$outbound || !$alt) {
+            return ['outbounds' => $outbound ? [$outbound] : [], 'endpoint' => $endpoint];
+        }
+
+        $id = (int) $es['id'];
+        $members = [];
+        $outbounds = [];
+        foreach (array_merge([(int) $es['endpoint_port']], $alt) as $port) {
+            $o = $outbound;
+            $o['tag'] = self::memberTag($id, $port);
+            $o['server_port'] = $port;
+            $outbounds[] = $o;
+            $members[] = $o['tag'];
+        }
+        // Группа идёт первой — «первый exit» (например, для загрузки списков)
+        // остаётся самой группой, а не случайным портом.
+        array_unshift($outbounds, [
+            'type' => 'urltest',
+            'tag' => self::tag($id),
+            'outbounds' => $members,
+            'url' => self::PROBE_URL,
+            'interval' => '1m',
+            // Не прыгаем между живыми портами из-за десятков мс разницы:
+            // переключение — когда текущий порт умер или заметно хуже.
+            'tolerance' => 300,
+            'interrupt_exist_connections' => true,
+        ]);
+        return ['outbounds' => $outbounds, 'endpoint' => $endpoint];
     }
 
     /** uTLS-фингерпринт из настроек панели (анти-DPI), с валидацией. По умолчанию chrome. */
@@ -150,6 +256,8 @@ class ExitOutboundBuilder
                 ];
                 if (!empty($params['flow'])) {
                     $outbound['flow'] = $params['flow'];
+                } elseif (self::multiplexEnabled()) {
+                    $outbound['multiplex'] = self::MULTIPLEX;
                 }
                 if ($transport) {
                     $outbound['transport'] = $transport;

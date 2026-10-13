@@ -110,6 +110,7 @@ class Provisioner
             $es = ExitServer::find((int) $conn['exit_server_id']);
             if ($es && !empty($es['endpoint_port'])) {
                 $protectedPorts[] = (int) $es['endpoint_port'];
+                $protectedPorts = array_merge($protectedPorts, \App\Singbox\ExitOutboundBuilder::altPorts($es));
             }
         }
         if ($server['is_self']) {
@@ -584,6 +585,11 @@ class Provisioner
                         'listen_port' => $port,
                         'users' => [['uuid' => $params['uuid'] ?? '', 'flow' => $params['flow'] ?? '']],
                     ];
+                    // Принимать mux от входной VPS (см. ExitOutboundBuilder::MULTIPLEX);
+                    // обычные соединения inbound принимает и так. Не с vision-flow.
+                    if (empty($params['flow'])) {
+                        $inbound['multiplex'] = ['enabled' => true];
+                    }
                     if (($params['transport'] ?? 'reality') === 'reality') {
                         // handshake_host/port (если заданы) — локальный TLS 1.3-фронт
                         // на exit-сервере (Caddy на 127.0.0.1:8443 с сайтом-прикрытием),
@@ -616,6 +622,11 @@ class Provisioner
                         }
                     }
                     $inbounds[] = $inbound;
+                    // Резервные порты — тот же inbound (ключи/UUID/SNI), другой порт.
+                    // На входной VPS они собираются в urltest-группу (см. ExitOutboundBuilder::buildAll).
+                    foreach (\App\Singbox\ExitOutboundBuilder::altPorts($es) as $altPort) {
+                        $inbounds[] = ['tag' => $tag . '-p' . $altPort, 'listen_port' => $altPort] + $inbound;
+                    }
                     break;
 
                 case 'shadowsocks':

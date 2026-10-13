@@ -157,12 +157,10 @@ class SingboxConfigBuilder
         ];
         $endpoints = [];
         foreach ($exitServers as $es) {
-            [$outbound, $endpoint] = ExitOutboundBuilder::build($es);
-            if ($outbound) {
-                $outbounds[] = $outbound;
-            }
-            if ($endpoint) {
-                $endpoints[] = $endpoint;
+            $built = ExitOutboundBuilder::buildAll($es);
+            array_push($outbounds, ...$built['outbounds']);
+            if ($built['endpoint']) {
+                $endpoints[] = $built['endpoint'];
             }
         }
 
@@ -194,7 +192,8 @@ class SingboxConfigBuilder
         if (self::listFetchEnabled()) {
             $exitTags = [];
             foreach (array_merge($outbounds, $endpoints) as $o) {
-                if (isset($o['tag']) && str_starts_with((string) $o['tag'], 'exit-')) {
+                // Порты-участники urltest-группы (exit-N~pPORT) — не самостоятельные exit'ы.
+                if (isset($o['tag']) && str_starts_with((string) $o['tag'], 'exit-') && !str_contains((string) $o['tag'], '~')) {
                     $exitTags[] = $o['tag'];
                 }
             }

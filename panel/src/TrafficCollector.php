@@ -169,7 +169,7 @@ class TrafficCollector
                 $meta = $c['metadata'] ?? [];
                 $key = self::clientKey($meta, $addrUsers, $ipUsers);
                 $chains = $c['chains'] ?? [];
-                $outbound = (string) ($chains[0] ?? 'direct-rf');
+                $outbound = \App\Singbox\ExitOutboundBuilder::canonicalTag((string) ($chains[0] ?? 'direct-rf'));
                 $host = (string) (($meta['host'] ?? '') ?: ($meta['destinationIP'] ?? '?'));
                 $inbound = (string) ($meta['type'] ?? '');
 
@@ -409,7 +409,7 @@ class TrafficCollector
             $m = $c['metadata'] ?? [];
             $chains = $c['chains'] ?? [];
             // В Clash chains перечисляет прокси; фактический outbound — последнее звено.
-            $outbound = (is_array($chains) && $chains) ? (string) end($chains) : '';
+            $outbound = (is_array($chains) && $chains) ? \App\Singbox\ExitOutboundBuilder::canonicalTag((string) end($chains)) : '';
             $destIp = (string) ($m['destinationIP'] ?? '');
             $host = (string) ($m['host'] ?? '');
             $rows[] = [
