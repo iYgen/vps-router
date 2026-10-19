@@ -59,7 +59,13 @@ install_mtg() {
 
 mtg_up() {
     local port secret
-    port=$(getconf mtg_port); case "$port" in ''|*[!0-9]*) port=8443;; esac
+    port=$(getconf mtg_port); case "$port" in ''|*[!0-9]*) port=9443;; esac
+    # Порт должен быть свободен (кроме самого mtg): иначе после ребута mtg может
+    # обогнать владельца порта — так 8443 отобрали у Caddy-фронта Reality, и все
+    # handshake'и exit'а стали "REALITY: processed invalid connection".
+    local busy
+    busy=$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -v '"mtg"')
+    [ -z "$busy" ] || { log "ERROR: tcp/$port уже занят: $(printf '%s' "$busy" | grep -oE 'users:\(\("[^"]+' | head -1 | cut -d'"' -f2)"; exit 1; }
     secret=$(getconf mtg_secret)
     # секрет строго hex (ee + 16 байт + домен) — панель его и генерит; тут только валидируем
     printf '%s' "$secret" | grep -qE '^[0-9a-fA-F]{34,}$' || { log "ERROR: пустой/битый secret"; exit 1; }

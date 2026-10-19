@@ -29,7 +29,7 @@ class TgProxy
         $raw = json_decode((string) Setting::get("tgproxy_$serverId", '{}'), true);
         $c = is_array($raw) ? $raw : [];
         return $c + [
-            'mtg_enabled' => 0, 'mtg_port' => 8443, 'mtg_domain' => 'www.cloudflare.com', 'mtg_secret' => '',
+            'mtg_enabled' => 0, 'mtg_port' => 9443, 'mtg_domain' => 'www.cloudflare.com', 'mtg_secret' => '',
             'socks_enabled' => 0, 'socks_port' => 1080, 'socks_user' => 'tg', 'socks_pass' => '',
         ];
     }
@@ -155,7 +155,7 @@ class TgProxy
             return ['ok' => false, 'error' => 'not found'];
         }
         $c = self::conf($serverId);
-        $c['mtg_port'] = $port >= 1 && $port <= 65535 ? $port : 8443;
+        $c['mtg_port'] = $port >= 1 && $port <= 65535 ? $port : 9443;
         $c['mtg_domain'] = $domain ?: $c['mtg_domain'];
         if (empty($c['mtg_secret'])) {
             $c['mtg_secret'] = self::genSecret((string) $c['mtg_domain']);

@@ -27,7 +27,7 @@ try {
     $action = (string) ($body['action'] ?? ($_GET['action'] ?? ''));
     switch ($action) {
         case 'mtg_enable':
-            Http::json(TgProxy::enableMtg($id, (int) ($body['port'] ?? 8443), trim((string) ($body['domain'] ?? ''))));
+            Http::json(TgProxy::enableMtg($id, (int) ($body['port'] ?? 9443), trim((string) ($body['domain'] ?? ''))));
             // no break (Http::json exits)
         case 'mtg_disable':
             Http::json(TgProxy::disableMtg($id));

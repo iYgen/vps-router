@@ -1456,7 +1456,7 @@
     box.innerHTML = `
       <div class="card" style="margin-bottom:12px">
         <div class="row" style="justify-content:space-between;align-items:center"><strong>MTProto (mtg)</strong> ${badge(d.mtg_active)}</div>
-        <div class="field-row"><label>${T('js.g.tg_port')}</label><input id="tg-mtg-port" type="number" value="${(c.mtg_port || 8443)}" style="width:110px"></div>
+        <div class="field-row"><label>${T('js.g.tg_port')}</label><input id="tg-mtg-port" type="number" value="${(c.mtg_port || 9443)}" style="width:110px"></div>
         <div class="field-row"><label>${T('js.g.tg_domain')}</label><input id="tg-mtg-domain" value="${escapeHtml(c.mtg_domain || 'www.cloudflare.com')}" placeholder="www.cloudflare.com"></div>
         <div class="row" style="gap:8px;margin-top:8px">
           <button id="tg-mtg-on">${T('js.g.tg_enable')}</button>
