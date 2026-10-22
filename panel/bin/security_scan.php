@@ -17,3 +17,14 @@ fwrite(STDOUT, sprintf(
     $result['security'],
     $result['checked_at']
 ));
+
+// Сверка PHP с апстримом (php.net + GitHub advisories): репозиторий ОС может
+// быть заморожен и не предлагать исправленную версию.
+$php = App\SecurityAudit::scanPhpUpstream();
+fwrite(STDOUT, sprintf(
+    "[security_scan] php=%s latest=%s vulns=%d%s\n",
+    $php['version'],
+    $php['latest'] ?? '?',
+    count($php['vulns']),
+    $php['error'] ? ' error=' . $php['error'] : ''
+));

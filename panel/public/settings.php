@@ -668,7 +668,32 @@ View::header('Настройки');
       <tr>
         <td><?= htmlspecialchars(t('sec.php_label')) ?></td>
         <td><?= htmlspecialchars($sec['php']['version']) ?>
-          <?php if ($sec['php']['eol']): ?><span class="badge down"><?= htmlspecialchars(t('sec.eol_badge')) ?><?= $sec['php']['eol_date'] ? ' · ' . htmlspecialchars(sprintf(t('sec.eol_since'), $sec['php']['eol_date'])) : '' ?></span><?php else: ?><span class="badge ok"><?= htmlspecialchars(t('sec.status_ok')) ?></span><?php endif; ?>
+          <?php if ($sec['php']['eol']): ?><span class="badge down"><?= htmlspecialchars(t('sec.eol_badge')) ?><?= $sec['php']['eol_date'] ? ' · ' . htmlspecialchars(sprintf(t('sec.eol_since'), $sec['php']['eol_date'])) : '' ?></span><?php endif; ?>
+          <?php if ($sec['php']['vulns']): ?>
+            <span class="badge down"><?= htmlspecialchars(sprintf(t('sec.php_vulns_badge'), count($sec['php']['vulns']))) ?></span>
+          <?php elseif ($sec['php']['outdated']): ?>
+            <span class="badge warn"><?= htmlspecialchars(sprintf(t('sec.php_latest_badge'), $sec['php']['latest'])) ?></span>
+          <?php elseif (!$sec['php']['eol'] && $sec['php']['checked_at'] !== null): ?>
+            <span class="badge ok"><?= htmlspecialchars(t('sec.status_ok')) ?></span>
+          <?php endif; ?>
+          <?php if ($sec['php']['checked_at'] === null): ?>
+            <span class="muted">· <?= htmlspecialchars(t('sec.php_upstream_unknown')) ?></span>
+          <?php else: ?>
+            <span class="muted">· <?= htmlspecialchars(sprintf(t('sec.checked_at'), $sec['php']['checked_at'])) ?><?= $sec['php']['error'] ? ' · ' . htmlspecialchars($sec['php']['error']) : '' ?></span>
+          <?php endif; ?>
+          <?php if ($sec['php']['vulns']): ?>
+            <details style="margin-top:6px">
+            <summary style="cursor:pointer"><?= htmlspecialchars(sprintf(t('sec.php_vulns_list'), count($sec['php']['vulns']))) ?></summary>
+            <ul style="margin:6px 0 0;padding-left:18px">
+              <?php foreach ($sec['php']['vulns'] as $v): ?>
+                <li><span class="badge <?= in_array($v['severity'], ['critical', 'high'], true) ? 'down' : 'warn' ?>"><?= htmlspecialchars($v['severity']) ?></span>
+                  <a href="https://github.com/php/php-src/security/advisories/<?= htmlspecialchars(rawurlencode($v['id'])) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($v['cve'] ?: $v['id']) ?></a>
+                  — <?= htmlspecialchars($v['summary']) ?>
+                  <span class="muted">(<?= htmlspecialchars($v['fixed'] !== null ? sprintf(t('sec.php_fixed_in'), $v['fixed']) : t('sec.php_no_fix')) ?>)</span></li>
+              <?php endforeach; ?>
+            </ul>
+            </details>
+          <?php endif; ?>
         </td>
       </tr>
       <tr>
