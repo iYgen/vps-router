@@ -16,6 +16,7 @@ class ServerIncidents
 {
     private const DOWN = ['offline', 'warning'];
     private const MAX_LOG = 60000; // символов — обрезаем, чтобы не раздувать БД
+    private const MAX_LOG_WINDOW_MIN = 360;
 
     /**
      * @param array      $server строка servers (нужны id)
@@ -40,7 +41,9 @@ class ServerIncidents
             $db = Database::get();
             $q = $db->prepare('SELECT 1 FROM server_incidents WHERE server_id = ? AND up_at IS NULL LIMIT 1');
             $q->execute([$serverId]);
-            if ($q->fetchColumn()) {
+            $exists = $q->fetchColumn();
+            $q->closeCursor();
+            if ($exists) {
                 return; // уже есть открытый инцидент — не плодим
             }
             $ins = $db->prepare('INSERT INTO server_incidents (server_id, down_at, down_detail) VALUES (?, ?, ?)');
@@ -57,12 +60,25 @@ class ServerIncidents
             $sel = $db->prepare('SELECT id, down_at FROM server_incidents WHERE server_id = ? AND up_at IS NULL ORDER BY id DESC LIMIT 1');
             $sel->execute([$serverId]);
             $inc = $sel->fetch(\PDO::FETCH_ASSOC);
+            // Закрываем курсор СРАЗУ: незавершённый SELECT держит read-снимок WAL, и
+            // если за время сбора логов по SSH (секунды) другой крон что-то записал,
+            // последующий UPDATE получает SQLITE_BUSY без ожидания (апгрейд устаревшего
+            // снимка до писателя запрещён) — инцидент так и оставался незакрытым.
+            $sel->closeCursor();
             if (!$inc) {
                 return; // открытого инцидента не было (напр. первый запуск после рестарта)
             }
+            $id = (int) $inc['id'];
+            // Сначала фиксируем восстановление — оно не должно зависеть от сбора логов.
+            Database::transaction(function (\PDO $db) use ($id) {
+                $db->prepare('UPDATE server_incidents SET up_at = ? WHERE id = ?')->execute([gmdate('Y-m-d H:i:s'), $id]);
+            });
             $logs = ($ssh && !empty($ssh['key'])) ? self::collectLogs($ssh, (string) $inc['down_at']) : null;
-            $upd = $db->prepare('UPDATE server_incidents SET up_at = ?, logs = ? WHERE id = ?');
-            $upd->execute([gmdate('Y-m-d H:i:s'), $logs, (int) $inc['id']]);
+            if ($logs !== null) {
+                Database::transaction(function (\PDO $db) use ($id, $logs) {
+                    $db->prepare('UPDATE server_incidents SET logs = ? WHERE id = ?')->execute([$logs, $id]);
+                });
+            }
         } catch (\Throwable $e) {
             error_log('ServerIncidents::close ' . $e->getMessage());
         }
@@ -72,7 +88,8 @@ class ServerIncidents
     private static function collectLogs(array $ssh, string $downAtUtc): ?string
     {
         $downTs = strtotime($downAtUtc . ' UTC') ?: time();
-        $mins = max(2, (int) ceil((time() - $downTs) / 60) + 2);
+        // Не больше 6 ч: за недели простоя journalctl не успевает за таймаут SSH.
+        $mins = min(self::MAX_LOG_WINDOW_MIN, max(2, (int) ceil((time() - $downTs) / 60) + 2));
         try {
             $r = Ssh::runCommand(
                 (string) $ssh['host'],

@@ -23,6 +23,9 @@ use App\ServerIncidents;
 use App\ServerTraffic;
 use App\Ssh;
 
+const HEALTH_SSH_ATTEMPTS = 3;    // всего попыток SSH до статуса offline
+const HEALTH_SSH_RETRY_DELAY = 5; // сек между попытками (3×8с таймаут + 2×5с < минуты крона)
+
 foreach (Server::all() as $server) {
     if (!$server['enabled']) {
         continue;
@@ -80,7 +83,15 @@ foreach (Server::all() as $server) {
     if (!$privateKey) {
         continue;
     }
+    // Повторы перед тем как объявить узел offline: одиночный SSH-отказ — обычно не
+    // простой, а sshd под брутфорсом, отбросивший соединение по MaxStartups (или
+    // разовая потеря пакета). Без повтора это давало пары писем «недоступен →
+    // снова доступен» с интервалом в минуту.
     $result = Ssh::testConnection($server['host'], (int) $server['ssh_port'], $server['ssh_user'], $privateKey);
+    for ($try = 1; !$result['ok'] && $try < HEALTH_SSH_ATTEMPTS; $try++) {
+        sleep(HEALTH_SSH_RETRY_DELAY);
+        $result = Ssh::testConnection($server['host'], (int) $server['ssh_port'], $server['ssh_user'], $privateKey);
+    }
     $status = $result['ok'] ? 'online' : 'offline';
     // Трёхстатусность для УДАЛЁННЫХ router-узлов: доступен, но sing-box стоит -> warning.
     if ($result['ok'] && ($server['role'] ?? '') === 'router') {
