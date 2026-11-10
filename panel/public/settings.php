@@ -207,8 +207,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sset('adblock_enabled', !empty($_POST['adblock_enabled']) ? '1' : '0');
             $sset('block_quic', !empty($_POST['block_quic']) ? '1' : '0');
             $sset('smart_dns', !empty($_POST['smart_dns']) ? '1' : '0');
+            $sset('route_domains_first', !empty($_POST['route_domains_first']) ? '1' : '0');
             $sset('list_fetch_via_exit', !empty($_POST['list_fetch_via_exit']) ? '1' : '0');
-            AuditLog::record('settings.adblock', 'adblock=' . (!empty($_POST['adblock_enabled']) ? '1' : '0') . ' quic=' . (!empty($_POST['block_quic']) ? '1' : '0') . ' dns=' . (!empty($_POST['smart_dns']) ? '1' : '0') . ' listfetch=' . (!empty($_POST['list_fetch_via_exit']) ? '1' : '0') . " (router=$routerId)");
+            AuditLog::record('settings.adblock', 'adblock=' . (!empty($_POST['adblock_enabled']) ? '1' : '0') . ' quic=' . (!empty($_POST['block_quic']) ? '1' : '0') . ' dns=' . (!empty($_POST['smart_dns']) ? '1' : '0') . ' domfirst=' . (!empty($_POST['route_domains_first']) ? '1' : '0') . ' listfetch=' . (!empty($_POST['list_fetch_via_exit']) ? '1' : '0') . " (router=$routerId)");
             $result = (new Applier())->apply(Auth::username() ?? 'system', 'блокировка рекламы/QUIC/умный DNS', $routerId);
             View::applyResultFlash($result);
         } elseif ($action === 'save_privacy') {

@@ -15,11 +15,18 @@ class RouteBuilder
     /**
      * @param array<int,array> $groups     включённые/все группы (RuleGroup::all)
      * @param array<int,array> $exitServers exit-серверы, ключ = id
+     * @param bool $domainsFirst «Сначала домены»: доменная часть всех групп идёт
+     *        раньше IP-части всех групп. Иначе IP-список группы, стоящей выше
+     *        (например импортированный «Google» → напрямую), перехватывает
+     *        соединение к youtube.com раньше, чем дойдёт до доменного правила
+     *        YouTube → exit: sing-box берёт первое совпадение, а sniff не
+     *        подменяет IP назначения.
      * @return array{rules:array,dnsExitDomains:array,dnsExitGeosite:array}
      */
-    public static function build(array $groups, array $exitServers, RuleSetRegistry $registry): array
+    public static function build(array $groups, array $exitServers, RuleSetRegistry $registry, bool $domainsFirst = false): array
     {
         $routeRules = [];
+        $ipRules = [];  // при $domainsFirst — IP-части групп, идут после всех доменных
         // По каждому exit-outbound копим доменные правила и geosite-теги, чтобы
         // резолвить эти домены через сам exit (DoH). См. DnsBuilder.
         $dnsExitDomains = [];  // outboundTag => ['domain'=>[], 'domain_suffix'=>[], 'domain_keyword'=>[]]
@@ -88,6 +95,16 @@ class RouteBuilder
             $headless = array_filter($headless, fn($v) => !empty($v));
             $refTags = [];
 
+            // IP-часть — в отдельный rule-set group-N-ip (если в группе есть и
+            // домены), иначе группа из одних IP целиком уходит во второй проход.
+            if ($domainsFirst && !empty($headless['ip_cidr'])) {
+                $ipOnly = ['ip_cidr' => $headless['ip_cidr']];
+                unset($headless['ip_cidr']);
+                $ipTag = (!empty($headless) || $geositeTagsForGroup) ? $localTag . '-ip' : $localTag;
+                $registry->addLocal($ipTag, $ipOnly);
+                $ipRules[] = ['rule_set' => [$ipTag], 'outbound' => $outboundTag];
+            }
+
             if (!empty($headless)) {
                 $registry->addLocal($localTag, $headless);
                 $refTags[] = $localTag;
@@ -105,7 +122,7 @@ class RouteBuilder
         }
 
         return [
-            'rules' => $routeRules,
+            'rules' => array_merge($routeRules, $ipRules),
             'dnsExitDomains' => $dnsExitDomains,
             'dnsExitGeosite' => $dnsExitGeosite,
         ];

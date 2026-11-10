@@ -193,4 +193,39 @@ class ConfigBuilderTest extends TestCase
         }
         $this->assertTrue($found, 'validate() должен предупредить о пустом включённом server set');
     }
+
+    public function testDomainsFirstMovesIpListsAfterAllDomainRules(): void
+    {
+        // Группа выше: только IP Google → напрямую. Группа ниже: домен + IP → тоже direct
+        // (exit не нужен — проверяем порядок, а не outbound).
+        $ipGroup = RuleGroup::create('IpOnly-' . uniqid(), null);
+        Rule::create($ipGroup, 'ip_cidr', '142.250.0.0/15');
+        $mixed = RuleGroup::create('Mixed-' . uniqid(), null);
+        Rule::create($mixed, 'domain_suffix', 'yt' . uniqid() . '.example');
+        Rule::create($mixed, 'ip_cidr', '173.194.0.0/16');
+
+        $indexOf = function (array $rules, string $tag): ?int {
+            foreach ($rules as $i => $r) {
+                if (in_array($tag, $r['rule_set'] ?? [], true)) {
+                    return $i;
+                }
+            }
+            return null;
+        };
+
+        Setting::set('route_domains_first', '0');
+        $off = (new SingboxConfigBuilder())->build();
+        $rules = $off['config']['route']['rules'];
+        $this->assertLessThan($indexOf($rules, "group-$mixed"), $indexOf($rules, "group-$ipGroup"));
+        $this->assertNull($indexOf($rules, "group-$mixed-ip"));
+
+        Setting::set('route_domains_first', '1');
+        $on = (new SingboxConfigBuilder())->build();
+        $rules = $on['config']['route']['rules'];
+        $domainIdx = $indexOf($rules, "group-$mixed");
+        $this->assertLessThan($indexOf($rules, "group-$ipGroup"), $domainIdx, 'домены группы ниже — раньше IP-списка группы выше');
+        $this->assertLessThan($indexOf($rules, "group-$mixed-ip"), $indexOf($rules, "group-$ipGroup"), 'IP-части сохраняют порядок групп');
+        $this->assertArrayNotHasKey('ip_cidr', $on['rule_sets']["group-$mixed"]['rules'][0]);
+        $this->assertSame(['173.194.0.0/16'], $on['rule_sets']["group-$mixed-ip"]['rules'][0]['ip_cidr']);
+    }
 }

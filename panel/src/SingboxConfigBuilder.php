@@ -72,6 +72,15 @@ class SingboxConfigBuilder
     }
 
     /**
+     * «Сначала домены»: доменные правила всех групп проверяются раньше
+     * IP-списков. По умолчанию включено — см. RouteBuilder::build().
+     */
+    public static function domainsFirstEnabled(): bool
+    {
+        return self::setget('route_domains_first', '1') === '1';
+    }
+
+    /**
      * «Умный DNS»: sing-box перехватывает DNS-запросы клиентов (hijack-dns) и
      * домены, идущие через exit, резолвит DoH-запросом ЧЕРЕЗ сам exit. По
      * умолчанию включено. Реализация — App\Singbox\DnsBuilder.
@@ -166,7 +175,7 @@ class SingboxConfigBuilder
 
         // Маршруты из групп + данные для DNS. Реестр rule-set'ов общий для всех модулей.
         $registry = new RuleSetRegistry((string) App::config()['singbox_ruleset_dir']);
-        $route = RouteBuilder::build($groups, $exitServers, $registry);
+        $route = RouteBuilder::build($groups, $exitServers, $registry, self::domainsFirstEnabled());
         $routeRules = $route['rules'];
 
         // Inbound'ы устройств (VLESS/Reality + остальные протоколы).

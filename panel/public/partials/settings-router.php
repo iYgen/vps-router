@@ -123,6 +123,11 @@ use App\RiskScanner;
     </label>
     <p class="muted" style="margin:6px 0 0"><?= htmlspecialchars(t('settings.smartdns.desc')) ?></p>
     <label style="display:flex;align-items:center;gap:8px;font-weight:500;margin-top:10px">
+      <input type="checkbox" name="route_domains_first" value="1" <?= ($settings['route_domains_first'] ?? '1') === '1' ? 'checked' : '' ?>>
+      <?= htmlspecialchars(t('settings.domfirst.toggle')) ?>
+    </label>
+    <p class="muted" style="margin:6px 0 0"><?= htmlspecialchars(t('settings.domfirst.desc')) ?></p>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:500;margin-top:10px">
       <input type="checkbox" name="list_fetch_via_exit" value="1" <?= ($settings['list_fetch_via_exit'] ?? '0') === '1' ? 'checked' : '' ?>>
       <?= htmlspecialchars(t('settings.listfetch.toggle')) ?>
     </label>

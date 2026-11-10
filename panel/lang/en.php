@@ -238,6 +238,8 @@ return [
     'settings.adblock.toggle' => 'Block ads and trackers',
     'settings.quic.toggle' => 'Block QUIC (HTTP/3) — recommended',
     'settings.quic.desc' => 'YouTube and Google first try to stream over QUIC (UDP). Over a VPN it often stalls, and video "freezes then resumes". With this on they use stable TCP right away.',
+    'settings.domfirst.toggle' => 'Domains first, then IP lists — recommended',
+    'settings.domfirst.desc' => 'A site\'s domain (from SNI) is more precise than its IP. Without this, the IP list of a group higher up (e.g. "Google" direct) captures youtube.com before the YouTube → exit domain rule is reached, so video fails in browsers and on TVs. With it, domain rules of all groups are checked first and IP lists only when no domain matched.',
     'settings.listfetch.toggle' => 'Fetch lists via exit',
     'settings.listfetch.desc' => 'Adds a local (127.0.0.1) SOCKS inbound routed through the first exit so external list import (Antizapret etc.) works even when the source is blocked in your country. After enabling, click Apply.',
     'settings.smartdns.toggle' => 'Smart DNS (hijack DNS + resolve via exit)',
