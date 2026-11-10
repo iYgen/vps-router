@@ -65,6 +65,7 @@
     tgProxy: (id) => apiCall(`/api/tgproxy.php?action=status&id=${id}`, 'GET'),
     tgProxyAction: (id, data) => apiCall(`/api/tgproxy.php?id=${id}`, 'POST', data),
     pkgStatus: (id) => apiCall(`/api/packages.php?action=status&id=${id}`, 'GET'),
+    nodeServices: (id) => apiCall(`/api/node-services.php?id=${id}`, 'GET'),
     pkgLog: (id) => apiCall(`/api/packages.php?action=log&id=${id}`, 'GET'),
     pkgUpgrade: (id) => apiCall(`/api/packages.php?id=${id}`, 'POST', {}),
 
@@ -1066,6 +1067,7 @@
         ${renderQuotaBlock(server)}
         ${server.has_ssh_key || server.is_self ? '<div id="metrics-result"><p class="muted">' + T('js.g.loading_metrics') + '</p></div>' : ''}
         ${server.has_ssh_key || server.is_self ? '<div id="pkg-box" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"></div>' : ''}
+        ${server.has_ssh_key || server.is_self ? '<div id="svc-box" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"></div>' : ''}
         ${server.host ? `
           <div class="row" style="margin-top:8px">
             <button class="secondary" id="btn-risk-scan">${T('js.g.risk_scan')}</button>
@@ -1220,6 +1222,7 @@
         });
       }
       if (body.querySelector('#pkg-box')) loadPkgStatus(server);
+      if (body.querySelector('#svc-box')) loadNodeServices(server);
       const cfgBtn = body.querySelector('#btn-router-config');
       if (cfgBtn) {
         cfgBtn.addEventListener('click', () => {
@@ -1539,6 +1542,50 @@
 
   // Блок «Система: обновления ОС-пакетов» в обзоре узла. Долгий upgrade идёт
   // в фоне на самом сервере (detached) — здесь только запуск, счётчик и журнал.
+  // Блок «Сервисы на узле»: Docker-контейнеры (Amnezia, поставленная своим
+  // приложением, и прочие) и ключевые службы. Только чтение.
+  async function loadNodeServices(server) {
+    const box = document.getElementById('svc-box');
+    if (!box) return;
+    box.innerHTML = `<div class="field-row"><label>${T('js.g.svc_title')}</label><span class="muted">${T('js.g.inc_loading')}</span></div>`;
+    let d;
+    try { d = await api.nodeServices(server.id); } catch (e) { box.innerHTML = `<div class="field-row"><label>${T('js.g.svc_title')}</label><span class="muted">${escapeHtml(e.message)}</span></div>`; return; }
+    if (!d || !d.ok) { box.innerHTML = `<div class="field-row"><label>${T('js.g.svc_title')}</label><span class="muted">${escapeHtml((d && d.error) || T('js.g.no_data'))}</span></div>`; return; }
+    const stBadge = (st) => (st === 'running' || st === 'active')
+      ? `<span class="badge ok">${escapeHtml(st)}</span>`
+      : `<span class="badge ${st === 'exited' || st === 'failed' || st === 'dead' ? 'down' : 'unknown'}">${escapeHtml(st)}</span>`;
+    const ports = (c) => (c.ports && c.ports.length) ? `<span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">${c.ports.map(escapeHtml).join(', ')}</span>` : '';
+    const row = (cells) => `<tr style="border-top:1px solid var(--border)">${cells.map((c) => `<td style="padding:4px 6px;vertical-align:top">${c}</td>`).join('')}</tr>`;
+    const table = (rows) => `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:4px"><tbody>${rows.join('')}</tbody></table></div>`;
+    let html = `<label style="font-weight:600">${T('js.g.svc_title')}</label>`;
+    if (d.amnezia && d.amnezia.length) {
+      html += `<div style="margin-top:8px"><strong>Amnezia</strong> <span class="muted" style="font-size:12px">${T('js.g.svc_amnezia_hint')}</span>`
+        + table(d.amnezia.map((c) => row([
+          `${escapeHtml(c.protocol)}<div class="muted" style="font-size:11.5px;font-family:ui-monospace,monospace">${escapeHtml(c.name)}</div>`,
+          stBadge(c.state),
+          ports(c),
+          c.peers ? `<span title="${escapeHtml(T('js.g.svc_peers_tip'))}">${T('js.g.svc_peers', c.peers.fresh, c.peers.total)}</span>` : '',
+        ]))) + '</div>';
+    }
+    if (d.containers && d.containers.length) {
+      html += `<div style="margin-top:8px"><strong>Docker</strong>`
+        + table(d.containers.map((c) => row([
+          `${escapeHtml(c.name)}<div class="muted" style="font-size:11.5px">${escapeHtml(c.image)}</div>`,
+          stBadge(c.state),
+          ports(c),
+          `<span class="muted" style="font-size:12px">${escapeHtml(c.status)}</span>`,
+        ]))) + '</div>';
+    }
+    if (d.units && d.units.length) {
+      html += `<div style="margin-top:8px"><strong>${T('js.g.svc_units')}</strong> `
+        + d.units.map((u) => `<span style="display:inline-block;margin:4px 8px 0 0;font-size:12.5px"><span style="font-family:ui-monospace,monospace">${escapeHtml(u.name)}</span> ${stBadge(u.state)}</span>`).join('')
+        + '</div>';
+    }
+    if (!(d.amnezia || []).length && !(d.containers || []).length && !(d.units || []).length) {
+      html += `<p class="muted">${T('js.g.svc_none')}</p>`;
+    }
+    box.innerHTML = html;
+  }
   async function loadPkgStatus(server) {
     const box = document.getElementById('pkg-box');
     if (!box) return;

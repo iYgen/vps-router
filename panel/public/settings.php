@@ -33,6 +33,13 @@ $sset = function (string $key, string $value) use ($isSelfRouter, $routerId): vo
 // (Инфраструктура → узел → «Конфигурация»). Тогда показываем ТОЛЬКО per-router
 // настройки (Reality/протоколы/блокировки) без общего каркаса панели.
 $embed = isset($_GET['embed']);
+// Глобальный X-Frame-Options: DENY (bootstrap) не даёт показать страницу во
+// вкладке-iframe инспектора — вкладка «Конфигурация» оставалась пустой.
+// Встраивание разрешаем только той же панели (как site.php для конструктора).
+if ($embed && !headers_sent()) {
+    header('X-Frame-Options: SAMEORIGIN');
+    header("Content-Security-Policy: frame-ancestors 'self'");
+}
 // В embed-режиме после сохранения добавляем saved=1 — по нему iframe уведомит
 // родительскую страницу (граф Инфраструктуры), чтобы та сразу перечитала конфиг.
 $selfRedirect = '/settings.php' . ($embed ? '?embed=1&router=' . $routerId . '&saved=1' : '');

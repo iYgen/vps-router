@@ -1812,4 +1812,11 @@ return [
     'js.g.hs_email' => 'E-mail when a wave starts',
     'js.g.hs_save' => 'Save',
     'js.g.hs_saved' => 'Saved',
+    // Node services
+    'js.g.svc_title' => 'Services on the node',
+    'js.g.svc_amnezia_hint' => '— installed separately (by the AmneziaVPN app), not managed by the panel',
+    'js.g.svc_peers' => 'clients online: %s of %s',
+    'js.g.svc_peers_tip' => 'Peers with a handshake in the last 3 minutes / configured in total',
+    'js.g.svc_units' => 'Services',
+    'js.g.svc_none' => 'Nothing else found.',
 ];
