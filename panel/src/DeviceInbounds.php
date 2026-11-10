@@ -470,8 +470,9 @@ class DeviceInbounds
                     if (!$pbk || !$sid || !$sni) {
                         break;
                     }
+                    // fp=edge: see public/device-config.php — chrome's post-quantum hello gets cut by path DPI.
                     $uri = sprintf(
-                        'vless://%s@%s:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp#%s',
+                        'vless://%s@%s:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=edge&pbk=%s&sid=%s&type=tcp#%s',
                         $client['uuid'], self::uriHost($host), $port, rawurlencode($sni), rawurlencode($pbk), rawurlencode($sid), rawurlencode($name)
                     );
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-vless.txt");

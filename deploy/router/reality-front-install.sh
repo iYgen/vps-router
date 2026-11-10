@@ -53,6 +53,9 @@ https://$DOMAIN:8443, https://www.$DOMAIN:8443 {
 	bind 127.0.0.1
 	tls $CERT_DIR/fullchain.pem $CERT_DIR/privkey.pem {
 		protocols tls1.2 tls1.3
+		# No X25519MLKEM768: the REALITY server cannot mirror a hybrid PQ key share, so Xray clients
+		# (fp=chrome sends it) fail with "processed invalid connection" if the front picks it.
+		curves x25519 secp256r1
 	}
 	reverse_proxy https://$UPSTREAM_IP:443 {
 		header_up Host {host}

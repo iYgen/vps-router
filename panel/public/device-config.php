@@ -72,8 +72,10 @@ if (!$connectHost || !$pbk || !$sid || !$sni) {
 }
 
 $safeName = preg_replace('/[^A-Za-z0-9_\-]+/', '_', $client['name']) ?: 'device';
+    // fp=edge, not chrome: Xray clients (v2rayTun) send a post-quantum chrome ClientHello that spans two
+    // TCP segments, and some DPI middleboxes drop the second one. Edge's hello fits one segment.
 $uri = sprintf(
-    'vless://%s@%s:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp#%s',
+    'vless://%s@%s:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=edge&pbk=%s&sid=%s&type=tcp#%s',
     $client['uuid'],
     $connectHost,
     $port,
@@ -114,7 +116,7 @@ $singboxConfig = [
             'tls' => [
                 'enabled' => true,
                 'server_name' => $sni,
-                'utls' => ['enabled' => true, 'fingerprint' => 'chrome'],
+                'utls' => ['enabled' => true, 'fingerprint' => 'edge'], // same reason as fp=edge above
                 'reality' => [
                     'enabled' => true,
                     'public_key' => $pbk,

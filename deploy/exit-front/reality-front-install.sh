@@ -56,6 +56,9 @@ https://$DOMAIN:8443 {
 	bind 127.0.0.1
 	tls {
 		protocols tls1.2 tls1.3
+		# No X25519MLKEM768: the REALITY server cannot mirror a hybrid PQ key share, so Xray clients
+		# (fp=chrome sends it) fail with "processed invalid connection" if the front picks it.
+		curves x25519 secp256r1
 	}
 	root * /var/www/update-site
 	file_server
