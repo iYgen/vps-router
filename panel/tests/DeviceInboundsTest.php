@@ -50,7 +50,7 @@ class DeviceInboundsTest extends TestCase
         $client = Client::find($client['id']);
 
         $configs = DeviceInbounds::clientConfigs($client);
-        $this->assertSame(array_keys(DeviceInbounds::PROTOCOLS), array_keys($configs));
+        $this->assertSame(array_keys(self::ALL_ON), array_keys($configs)); // xhttp без домена не готов
         $this->assertStringStartsWith('vless://', $configs['vless']['uri']);
         $this->assertStringStartsWith('ss://2022-blake3-aes-128-gcm:', $configs['shadowsocks']['uri']);
         $this->assertStringStartsWith('trojan://', $configs['trojan']['uri']);

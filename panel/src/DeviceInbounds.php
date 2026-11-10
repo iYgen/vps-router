@@ -32,6 +32,12 @@ class DeviceInbounds
             'default_port' => 443,
             'desc' => 'Маскировка под обычный HTTPS чужого сайта. Приложения: v2rayNG, Hiddify, NekoBox, Streisand, sing-box.',
         ],
+        'xhttp' => [
+            'label' => 'VLESS + XHTTP (Xray)',
+            'transport' => 'tcp',
+            'default_port' => 443,
+            'desc' => 'Запросы HTTP/2 к обычному сайту на 443 (TLS — настоящий сертификат сайта, путь секретный). Встроенный xmux держит несколько долгих соединений вместо тысяч рукопожатий — устойчивее на мобильном интернете. Можно спрятать за CDN. Нужен Xray на сервере и nginx-сайт (см. deploy/router/xhttp-install.sh). Приложения на ядре Xray: v2rayTun, v2rayNG, Happ, Streisand.',
+        ],
         'shadowsocks' => [
             'label' => 'Shadowsocks-2022',
             'transport' => 'tcp+udp',
@@ -67,6 +73,12 @@ class DeviceInbounds
     /** Loopback-порты VLESS-WS / VLESS-gRPC для мультиплекса на 443 за фронтом. */
     public const MUX_WS_PORT = 8444;
     public const MUX_GRPC_PORT = 8445;
+
+    /** XHTTP: Xray слушает loopback (за nginx), трафик отдаёт в sing-box через локальный SOCKS-мост. */
+    public const XHTTP_LOCAL_PORT = 8446;
+    public const XHTTP_BRIDGE_PORT = 10811;
+    public const XHTTP_BRIDGE_TAG = 'xhttp-bridge';
+    private const XMUX_DEFAULT_CONCURRENCY = '16-32';
 
     /** Порт sing-box redirect-inbound для TCP из awg-in (снаружи закрыт iptables). */
     public const AWG_REDIRECT_PORT = 7893;
@@ -195,6 +207,120 @@ class DeviceInbounds
         return ($p >= 1 && $p <= 65535) ? $p : self::MUX_GRPC_PORT;
     }
 
+    // --- XHTTP (Xray) ---------------------------------------------------------
+    // Xray-inbound VLESS+XHTTP слушает только 127.0.0.1 без TLS; TLS на 443 и
+    // секретный путь обслуживает nginx настоящего сайта (snippet, который
+    // пишет apply-router.sh). Маршрутизацию Xray не делает: каждый клиент уходит
+    // в sing-box через SOCKS-мост со своим логином cN — работают те же группы,
+    // exit'ы, политики и учёт трафика, что и у Reality.
+
+    /** Домен сайта, за которым спрятан XHTTP (должен указывать на этот сервер и иметь сертификат). */
+    public static function xhttpHost(): ?string
+    {
+        $h = strtolower(trim((string) self::cfg('inbound_xhttp_host', '')));
+        return self::validHost($h) ? $h : null;
+    }
+
+    public static function validHost(string $h): bool
+    {
+        return (bool) preg_match('/^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $h);
+    }
+
+    public static function validPath(string $p): bool
+    {
+        return (bool) preg_match('#^/[A-Za-z0-9_-]{6,64}$#', $p);
+    }
+
+    public static function xhttpPath(): string
+    {
+        $p = (string) self::cfg('inbound_xhttp_path', '');
+        return self::validPath($p) ? $p : '';
+    }
+
+    public static function xmuxEnabled(): bool
+    {
+        return self::cfg('inbound_xhttp_xmux', '1') === '1';
+    }
+
+    public static function validRange(string $r): bool
+    {
+        return (bool) preg_match('/^\d{1,4}(-\d{1,4})?$/', $r);
+    }
+
+    public static function xmuxConcurrency(): string
+    {
+        $r = trim((string) self::cfg('inbound_xhttp_xmux_concurrency', self::XMUX_DEFAULT_CONCURRENCY));
+        return self::validRange($r) ? $r : self::XMUX_DEFAULT_CONCURRENCY;
+    }
+
+    /** XHTTP готов к работе: включён, задан домен и путь. */
+    public static function xhttpReady(): bool
+    {
+        return self::isEnabled('xhttp') && self::xhttpHost() !== null && self::xhttpPath() !== '';
+    }
+
+    /**
+     * Блок `extra` клиентской ссылки: xmux (несколько долгих HTTP/2-соединений,
+     * запросы мультиплексируются внутри) и паддинг. null — клиент по умолчанию.
+     */
+    public static function xhttpExtra(): ?array
+    {
+        if (!self::xmuxEnabled()) {
+            return null;
+        }
+        return [
+            'xmux' => [
+                'maxConcurrency' => self::xmuxConcurrency(),
+                'maxConnections' => 0,
+                'cMaxReuseTimes' => '64-128',
+                'hMaxRequestTimes' => '600-900',
+                'hMaxReusableSecs' => '1800-3000',
+                'hKeepAlivePeriod' => 0,
+            ],
+            'xPaddingBytes' => '100-1000',
+        ];
+    }
+
+    /** Сохранить настройки XHTTP из формы. Бросает InvalidArgumentException. */
+    public static function saveXhttpSettings(array $in): void
+    {
+        $host = strtolower(trim((string) ($in['host'] ?? '')));
+        if ($host !== '' && !self::validHost($host)) {
+            throw new \InvalidArgumentException('XHTTP: некорректный домен сайта');
+        }
+        $path = trim((string) ($in['path'] ?? ''));
+        if ($path !== '' && !self::validPath($path)) {
+            throw new \InvalidArgumentException('XHTTP: путь — «/» и 6–64 символа [A-Za-z0-9_-]');
+        }
+        $conc = trim((string) ($in['xmux_concurrency'] ?? self::XMUX_DEFAULT_CONCURRENCY));
+        if (!self::validRange($conc)) {
+            throw new \InvalidArgumentException('XHTTP: xmux — число или диапазон вида 16-32');
+        }
+        self::cfgset('inbound_xhttp_host', $host);
+        if ($path !== '') {
+            self::cfgset('inbound_xhttp_path', $path);
+        }
+        self::cfgset('inbound_xhttp_xmux', !empty($in['xmux']) ? '1' : '0');
+        self::cfgset('inbound_xhttp_xmux_concurrency', $conc);
+        self::ensureSecrets();
+    }
+
+    /** Пароль клиента на SOCKS-мосту Xray → sing-box (выводится из uuid и секрета панели, не хранится). */
+    public static function xhttpBridgePassword(array $client): string
+    {
+        $secret = (string) (App::config()['app_secret'] ?? '');
+        return substr(hash_hmac('sha256', 'xhttp-bridge|' . $client['uuid'], $secret), 0, 32);
+    }
+
+    /** Окружение для apply-router.sh (nginx-snippet): пусто, если XHTTP не готов. */
+    public static function xhttpEnv(): string
+    {
+        if (!self::xhttpReady()) {
+            return '';
+        }
+        return 'PATH_PREFIX=' . self::xhttpPath() . "\nLOCAL_PORT=" . self::XHTTP_LOCAL_PORT . "\n";
+    }
+
     public static function publicHost(): ?string
     {
         return self::cfg('reality_public_host') ?: (self::cfg('reality_listen_ip') ?: (App::config()['reality_listen_ip'] ?? null));
@@ -219,7 +345,8 @@ class DeviceInbounds
             if ($port === self::AWG_REDIRECT_PORT) {
                 throw new \InvalidArgumentException("Порт " . self::AWG_REDIRECT_PORT . " зарезервирован панелью");
             }
-            if ($enabled) {
+            // XHTTP публикует nginx сайта (обычно тот же 443, что и сайты) — sing-box этот порт не слушает.
+            if ($enabled && $protocol !== 'xhttp') {
                 foreach (self::protoTransports($protocol) as $t) {
                     if (isset($taken["$port/$t"])) {
                         throw new \InvalidArgumentException("{$meta['label']} и {$taken["$port/$t"]} не могут слушать один и тот же порт $port/$t");
@@ -274,6 +401,9 @@ class DeviceInbounds
         if (self::isEnabled('amneziawg') && !self::cfg('inbound_amneziawg_params')) {
             self::cfgset('inbound_amneziawg_params', json_encode(self::randomAmneziaParams()));
         }
+        if (self::isEnabled('xhttp') && self::xhttpPath() === '') {
+            self::cfgset('inbound_xhttp_path', '/' . bin2hex(random_bytes(8)));
+        }
     }
 
     /**
@@ -292,6 +422,17 @@ class DeviceInbounds
             return ['inbounds' => [], 'endpoints' => []];
         }
         $listen = self::listenIp();
+
+        // Мост для XHTTP: Xray отдаёт сюда трафик каждого клиента под его логином cN.
+        if (self::xhttpReady()) {
+            $inbounds[] = [
+                'type' => 'socks',
+                'tag' => self::XHTTP_BRIDGE_TAG,
+                'listen' => '127.0.0.1',
+                'listen_port' => self::XHTTP_BRIDGE_PORT,
+                'users' => array_map(fn($c) => ['username' => self::userName($c), 'password' => self::xhttpBridgePassword($c)], $clients),
+            ];
+        }
 
         if (self::isEnabled('shadowsocks') && self::cfg('inbound_ss_server_psk')) {
             $inbounds[] = [
@@ -476,6 +617,30 @@ class DeviceInbounds
                         $client['uuid'], self::uriHost($host), $port, rawurlencode($sni), rawurlencode($pbk), rawurlencode($sid), rawurlencode($name)
                     );
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-vless.txt");
+                    break;
+
+                case 'xhttp':
+                    if (!self::xhttpReady()) {
+                        break;
+                    }
+                    $xh = self::xhttpHost();
+                    $q = [
+                        'encryption' => 'none',
+                        'security' => 'tls',
+                        'sni' => $xh,
+                        'fp' => 'edge', // как у Reality: hello в один сегмент
+                        'alpn' => 'h2',
+                        'type' => 'xhttp',
+                        'host' => $xh,
+                        'path' => self::xhttpPath(),
+                        'mode' => 'auto',
+                    ];
+                    if ($extra = self::xhttpExtra()) {
+                        $q['extra'] = json_encode($extra, JSON_UNESCAPED_SLASHES);
+                    }
+                    $uri = 'vless://' . $client['uuid'] . '@' . $xh . ':' . $port . '?'
+                        . http_build_query($q, '', '&', PHP_QUERY_RFC3986) . '#' . rawurlencode($name . ' XHTTP');
+                    $out[$protocol] = self::entry($label, $uri, null, "$safe-xhttp.txt");
                     break;
 
                 case 'shadowsocks':

@@ -203,6 +203,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!array_filter($values, fn($v) => $v['enabled'])) {
                 throw new \InvalidArgumentException(t('settings.err.no_proto'));
             }
+            if (isset($_POST['xhttp']) && is_array($_POST['xhttp'])) {
+                DeviceInbounds::saveXhttpSettings($_POST['xhttp']);
+            }
             DeviceInbounds::saveSettings($values);
             AuditLog::record('settings.save_inbounds', implode(',', DeviceInbounds::enabled()) . " (router=$routerId)");
             $result = (new Applier())->apply(Auth::username() ?? 'system', 'протоколы устройств: ' . implode(', ', DeviceInbounds::enabled()), $routerId);

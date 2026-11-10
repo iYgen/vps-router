@@ -26,8 +26,21 @@ if ! sing-box check -c "$SINGBOX_CONFIG"; then
     log "ERROR: конфиг sing-box не прошёл проверку, отменяю применение"
     exit 1
 fi
+# Типовой юнит запускает sing-box с -C <каталог> — он читает ВСЕ *.json рядом.
+# Посторонний .json в каталоге уронит сервис, хотя основной конфиг валиден.
+if systemctl cat sing-box 2>/dev/null | grep -q -- '-C '; then
+    if ! sing-box check -C "$(dirname "$SINGBOX_CONFIG")"; then
+        log "ERROR: каталог $(dirname "$SINGBOX_CONFIG") целиком не проходит проверку (лишний *.json?), отменяю применение"
+        exit 1
+    fi
+fi
 
 systemctl restart sing-box
+sleep 2
+if ! systemctl is-active --quiet sing-box; then
+    log "ERROR: sing-box не поднялся после перезапуска: $(journalctl -u sing-box -n 3 --no-pager -o cat 2>/dev/null | tr '\n' ' ')"
+    exit 1
+fi
 log "sing-box перезапущен"
 
 # --- 2. Поднимаем/перезапускаем только изменившиеся WG-интерфейсы --------
@@ -131,6 +144,69 @@ if command -v iptables >/dev/null 2>&1; then
         drop_chain nat PANEL-AWG-POST POSTROUTING
         drop_chain filter PANEL-AWG-FWD FORWARD
         drop_chain filter PANEL-AWG-IN INPUT
+    fi
+fi
+
+# --- 3b. Вход VLESS+XHTTP (Xray за nginx сайта) ----------------------------
+# Панель пишет xray-xhttp.conf (JSON) (пусто = выключено) и xhttp.env (путь + loopback-порт).
+# Xray ставится отдельно (deploy/router/xhttp-install.sh): юнит xray-xhttp, юзер
+# xray-xhttp, snippet /etc/nginx/snippets/vpsrouter-xhttp.conf, подключённый в
+# server{} сайта. Без установленного Xray шаг молча пропускается.
+XRAY_SRC="$(dirname "$SINGBOX_CONFIG")/xray-xhttp.conf"  # не .json: sing-box запущен с -C <каталог> и читает все *.json
+XHTTP_ENV="$(dirname "$SINGBOX_CONFIG")/xhttp.env"
+XRAY_DIR=/etc/xray-xhttp
+XHTTP_SNIPPET=/etc/nginx/snippets/vpsrouter-xhttp.conf
+if command -v xray >/dev/null 2>&1 && id xray-xhttp >/dev/null 2>&1 && [ -d "$XRAY_DIR" ]; then
+    XH_PATH="" XH_PORT=""
+    if [ -s "$XHTTP_ENV" ]; then
+        XH_PATH=$(sed -n 's/^PATH_PREFIX=//p' "$XHTTP_ENV")
+        XH_PORT=$(sed -n 's/^LOCAL_PORT=//p' "$XHTTP_ENV")
+        # Файл пишет веб-пользователь — принимаем только строго ожидаемый формат.
+        if ! [[ "$XH_PATH" =~ ^/[A-Za-z0-9_-]{6,64}$ && "$XH_PORT" =~ ^[0-9]{2,5}$ ]]; then
+            log "WARN: $XHTTP_ENV в неожиданном формате — XHTTP выключаю"
+            XH_PATH=""
+        fi
+    fi
+    if [ -n "$XH_PATH" ] && [ -s "$XRAY_SRC" ]; then
+        install -o root -g xray-xhttp -m 640 "$XRAY_SRC" "$XRAY_DIR/config.new.json"
+        if runuser -u xray-xhttp -- xray run -test -c "$XRAY_DIR/config.new.json" >/dev/null 2>&1; then
+            if ! cmp -s "$XRAY_DIR/config.new.json" "$XRAY_DIR/config.json" || ! systemctl is-active --quiet xray-xhttp; then
+                mv -f "$XRAY_DIR/config.new.json" "$XRAY_DIR/config.json"
+                systemctl enable xray-xhttp >/dev/null 2>&1 || true
+                systemctl restart xray-xhttp
+                log "xray-xhttp перезапущен"
+            else
+                rm -f "$XRAY_DIR/config.new.json"
+            fi
+        else
+            rm -f "$XRAY_DIR/config.new.json"
+            log "ERROR: конфиг Xray не прошёл проверку — XHTTP оставлен как был"
+        fi
+        SNIP="# managed by vps-router apply-router.sh — do not edit
+location ^~ $XH_PATH {
+    client_max_body_size 0;
+    client_body_timeout 5m;
+    grpc_pass grpc://127.0.0.1:$XH_PORT;
+    grpc_set_header Host \$host;
+    grpc_set_header X-Real-IP \$remote_addr;
+    grpc_read_timeout 1h;
+    grpc_send_timeout 1h;
+    grpc_socket_keepalive on;
+    access_log off;
+}"
+    else
+        systemctl disable --now xray-xhttp >/dev/null 2>&1 || true
+        SNIP="# managed by vps-router apply-router.sh — XHTTP disabled"
+    fi
+    if [ "$(cat "$XHTTP_SNIPPET" 2>/dev/null)" != "$SNIP" ]; then
+        [ -f "$XHTTP_SNIPPET" ] && cp -f "$XHTTP_SNIPPET" "$XHTTP_SNIPPET.bak"
+        printf '%s\n' "$SNIP" > "$XHTTP_SNIPPET"
+        if nginx -t >/dev/null 2>&1; then
+            systemctl reload nginx && log "nginx: XHTTP location обновлён"
+        else
+            log "ERROR: nginx -t не прошёл — возвращаю прежний snippet"
+            [ -f "$XHTTP_SNIPPET.bak" ] && mv -f "$XHTTP_SNIPPET.bak" "$XHTTP_SNIPPET"
+        fi
     fi
 fi
 

@@ -120,6 +120,12 @@ class Applier
         // Порты включённых протоколов — apply-router.sh откроет их в ufw/firewalld, если те активны.
         $this->writeFile(dirname($config['singbox_config_path']) . '/open-ports.list', implode("\n", DeviceInbounds::openPorts()) . "\n");
 
+        // Вход VLESS+XHTTP: конфиг Xray + путь для nginx-snippet. Пустые файлы = выключено
+        // (apply-router.sh остановит xray-xhttp и уберёт location).
+        $xray = \App\Singbox\XrayXhttpBuilder::build(Models\Client::active());
+        $this->writeFile(dirname($config['singbox_config_path']) . '/xray-xhttp.conf', $xray ? json_encode($xray, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n" : '');
+        $this->writeFile(dirname($config['singbox_config_path']) . '/xhttp.env', DeviceInbounds::xhttpEnv());
+
         $result = $this->runApplyScript($config['apply_script']);
         ConfigVersion::record($username, $description, $built['config'], $result);
         if (($result['exit_code'] ?? 1) === 0) {

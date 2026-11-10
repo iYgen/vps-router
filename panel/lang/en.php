@@ -232,6 +232,11 @@ return [
     'settings.protocols.col_port' => 'Port',
     'settings.protocols.vless_port_note' => '(set in Reality above)',
     'settings.protocols.footer' => 'AmneziaWG requires amneziawg-tools on this server. Hysteria2 and WireGuard use UDP — some hosters need UDP opened in their panel.',
+    'settings.xhttp.host' => 'Site domain (TLS by nginx)',
+    'settings.xhttp.path' => 'Secret path',
+    'settings.xhttp.path_auto' => 'auto-generated',
+    'settings.xhttp.concurrency' => 'streams per connection',
+    'settings.xhttp.note' => 'xmux: the client keeps a few long-lived HTTP/2 connections and multiplexes streams over them — fewer new TLS handshakes, more resilient to drops. Add to the site\'s 443 server{}: include snippets/vpsrouter-xhttp.conf;',
 
     'settings.adblock.title' => 'Ad blocking',
     'settings.adblock.desc' => 'Runs on the server for all devices at once, nothing to install on the phone. Rejects connections to ad and tracking domains. It cannot remove ads inside YouTube videos — for that you need ad-stripping clients (uBlock Origin, ReVanced, SmartTube).',

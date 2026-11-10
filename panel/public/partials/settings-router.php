@@ -95,6 +95,25 @@ use App\RiskScanner;
             <?php endif; ?>
           </td>
         </tr>
+        <?php if ($protocol === 'xhttp'): ?>
+        <tr>
+          <td></td>
+          <td colspan="2" style="font-size:13px">
+            <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+              <label><?= htmlspecialchars(t('settings.xhttp.host')) ?><br>
+                <input type="text" name="xhttp[host]" value="<?= htmlspecialchars((string) DeviceInbounds::xhttpHost()) ?>" placeholder="example.com" style="width:180px"></label>
+              <label><?= htmlspecialchars(t('settings.xhttp.path')) ?><br>
+                <input type="text" name="xhttp[path]" value="<?= htmlspecialchars(DeviceInbounds::xhttpPath()) ?>" placeholder="<?= htmlspecialchars(t('settings.xhttp.path_auto')) ?>" style="width:180px"></label>
+              <label style="display:flex;align-items:center;gap:6px">
+                <input type="checkbox" name="xhttp[xmux]" value="1" <?= DeviceInbounds::xmuxEnabled() ? 'checked' : '' ?>>
+                xmux</label>
+              <label><?= htmlspecialchars(t('settings.xhttp.concurrency')) ?><br>
+                <input type="text" name="xhttp[xmux_concurrency]" value="<?= htmlspecialchars(DeviceInbounds::xmuxConcurrency()) ?>" style="width:80px"></label>
+            </div>
+            <p class="muted" style="margin:6px 0 0"><?= htmlspecialchars(t('settings.xhttp.note')) ?></p>
+          </td>
+        </tr>
+        <?php endif; ?>
       <?php endforeach; ?>
     </table>
     <p class="muted"><?= htmlspecialchars(t('settings.protocols.footer')) ?></p>

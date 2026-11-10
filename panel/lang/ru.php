@@ -233,6 +233,11 @@ return [
     'settings.protocols.col_port' => 'Порт',
     'settings.protocols.vless_port_note' => '(задаётся в Reality выше)',
     'settings.protocols.footer' => 'AmneziaWG требует amneziawg-tools на этом сервере. Hysteria2 и WireGuard работают по UDP — у некоторых хостеров UDP нужно открыть в их панели.',
+    'settings.xhttp.host' => 'Домен сайта (TLS у nginx)',
+    'settings.xhttp.path' => 'Секретный путь',
+    'settings.xhttp.path_auto' => 'сгенерируется',
+    'settings.xhttp.concurrency' => 'потоков на соединение',
+    'settings.xhttp.note' => 'xmux: клиент держит несколько долгих HTTP/2-соединений и пускает в них потоки — меньше новых TLS-рукопожатий, устойчивее при обрывах. В server{} сайта на 443 добавьте: include snippets/vpsrouter-xhttp.conf;',
 
     'settings.adblock.title' => 'Блокировка рекламы',
     'settings.adblock.desc' => 'Работает на сервере для всех устройств сразу, ничего ставить на телефон не нужно. Отклоняет соединения к рекламным и трекинговым доменам. Рекламу внутри видео YouTube так убрать нельзя — нужны клиенты с вырезанием рекламы (uBlock Origin, ReVanced, SmartTube).',
