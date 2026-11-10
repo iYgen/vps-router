@@ -12,7 +12,7 @@ View::header(t('dash.title'), t('dash.subtitle'));
 ?>
 <script>window.PANEL_CONFIG = {
   graphRefreshInterval: <?= (int) (Setting::get('graph_refresh_interval', '30')) ?>,
-  features: { probeIntel: <?= \App\Modules\ModuleManager::featureActive('probe-intel') ? 'true' : 'false' ?>, tgProxy: <?= \App\Modules\ModuleManager::featureActive('tg-proxy') ? 'true' : 'false' ?> }
+  features: { probeIntel: <?= \App\Modules\ModuleManager::featureActive('probe-intel') ? 'true' : 'false' ?>, tgProxy: <?= \App\Modules\ModuleManager::featureActive('tg-proxy') ? 'true' : 'false' ?>, handshakeWatch: <?= \App\Modules\ModuleManager::featureActive('handshake-watch') ? 'true' : 'false' ?> }
 };</script>
 
 <div class="kpi-slider" id="kpi-slider">

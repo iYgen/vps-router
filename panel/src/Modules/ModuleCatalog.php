@@ -96,6 +96,14 @@ class ModuleCatalog
                 'provides' => ['features' => ['probe-intel']],
             ],
             [
+                'id' => 'feature-handshake-watch',
+                'name' => 'Handshake watch',
+                'version' => '1.0.0',
+                'type' => 'feature',
+                'description' => 'Watches the entry node\'s sing-box log every minute and detects "waves" of failed client handshakes per source address (typical of DPI on the client\'s network, e.g. mobile carriers). Each wave is logged with the ISP, the affected clients and its peak; a short packet capture of that address is taken automatically and summarised (did the ClientHello arrive whole, did the server answer, who closed). Without this module the "Handshake waves" tab is hidden.',
+                'provides' => ['features' => ['handshake-watch']],
+            ],
+            [
                 'id' => 'feature-billing',
                 'name' => 'Billing',
                 'version' => '1.0.0',

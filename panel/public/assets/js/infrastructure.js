@@ -60,6 +60,8 @@
     antidpiGet: () => apiCall('/api/antidpi.php', 'GET'),
     antidpiSave: (data) => apiCall('/api/antidpi.php', 'POST', data),
     wgStatus: () => apiCall('/api/wg-status.php', 'GET'),
+    hsOverview: (offset) => apiCall(`/api/handshake-watch.php?action=overview&offset=${offset || 0}`, 'GET'),
+    hsSaveConfig: (data) => apiCall('/api/handshake-watch.php?action=config', 'POST', data),
     tgProxy: (id) => apiCall(`/api/tgproxy.php?action=status&id=${id}`, 'GET'),
     tgProxyAction: (id, data) => apiCall(`/api/tgproxy.php?id=${id}`, 'POST', data),
     pkgStatus: (id) => apiCall(`/api/packages.php?action=status&id=${id}`, 'GET'),
@@ -995,6 +997,10 @@
     if (server.is_self) {
       items.push({ tab: 'wgmon', icon: '📡', label: T('js.g.tab_wgmon') });
     }
+    // «Волны обрывов» — журнал sing-box читается локально, поэтому только на самом входном узле.
+    if (server.is_self && window.PANEL_CONFIG && window.PANEL_CONFIG.features && window.PANEL_CONFIG.features.handshakeWatch) {
+      items.push({ tab: 'hswatch', icon: '🌊', label: T('js.g.tab_hswatch') });
+    }
     // Telegram-прокси — на любом узле, если модуль включён.
     if (window.PANEL_CONFIG && window.PANEL_CONFIG.features && window.PANEL_CONFIG.features.tgProxy) {
       items.push({ tab: 'tgproxy', icon: '✈️', label: T('js.g.tab_tgproxy') });
@@ -1436,6 +1442,8 @@
       renderProbeTab(server, body);
     } else if (tab === 'wgmon') {
       renderWgMonTab(server, body);
+    } else if (tab === 'hswatch') {
+      renderHsWatchTab(server, body);
     } else if (tab === 'config') {
       renderConfigTab(server, body);
     } else if (tab === 'tgproxy') {
@@ -1594,6 +1602,106 @@
     down: { cls: 'unknown', color: 'var(--text-muted)' },
     unknown: { cls: 'unknown', color: 'var(--text-muted)' },
   };
+  // ---- Волны обрывов (Handshake watch) -------------------------------------
+  const HS_VERDICT = {
+    hello_cut: 'down', handshake_dropped: 'down', resets: 'down', looks_ok: 'ok', no_traffic: 'unknown',
+  };
+  async function renderHsWatchTab(server, body, offset) {
+    offset = offset || 0;
+    if (!offset) body.innerHTML = `<p class="muted">${T('js.g.hs_desc')}</p><div id="hs-box"><span class="muted">${T('js.g.inc_loading')}</span></div>`;
+    const box = body.querySelector('#hs-box');
+    let d;
+    try { d = await api.hsOverview(offset); } catch (e) { box.innerHTML = `<div class="flash error">${escapeHtml(e.message)}</div>`; return; }
+    const cfg = d.config || {};
+    const series = d.series || [];
+    const maxF = Math.max(1, ...series.map((s) => Number(s.failed)));
+    const strip = series.length ? series.map((s) => {
+      const f = Number(s.failed), t = Math.max(Number(s.total), f);
+      const h = f ? Math.max(3, Math.round(30 * f / maxF)) : 2;
+      const color = f === 0 ? 'var(--success)' : (t && f / t >= cfg.min_ratio ? 'var(--danger)' : 'var(--warning,#f5b942)');
+      return `<span title="${escapeHtml(s.bucket)} UTC · ${T('js.g.hs_tip', f, t)}" style="display:inline-block;flex:0 0 5px;height:${h}px;margin:0 1px;border-radius:2px;background:${color}"></span>`;
+    }).join('') : `<span class="muted">${T('js.g.hs_no_data')}</span>`;
+
+    const fmtDur = (a, b) => {
+      const end = b ? new Date(b.replace(' ', 'T') + ':00Z') : new Date();
+      const m = Math.max(1, Math.round((end - new Date(a.replace(' ', 'T') + ':00Z')) / 60000));
+      return m < 120 ? m + T('js.g.inc_min') : (m / 60).toFixed(1) + T('js.g.inc_hour');
+    };
+    const capHtml = (w) => {
+      const s = w.capture_summary || {};
+      const st = w.capture_status || 'skipped';
+      let html = `<span class="muted">${T('js.g.hs_cap_' + st)}</span>`;
+      if (st === 'done') {
+        const v = s.verdict || 'no_traffic';
+        const seg = Object.entries(s.first_seg || {}).map(([b, n]) => `${b}B×${n}`).join(', ');
+        html = `<span class="badge ${HS_VERDICT[v] || 'unknown'}">${T('js.g.hs_v_' + v)}</span>
+          <div class="muted" style="font-size:12px;margin-top:4px">${T('js.g.hs_cap_stats', s.flows || 0, s.answered || 0, s.unanswered || 0, s.hello_split_lost || 0)}${seg ? ' · ClientHello: ' + escapeHtml(seg) : ''}${s.answer_ms_median != null ? ' · ' + T('js.g.hs_cap_rtt', s.answer_ms_median) : ''}</div>`;
+      } else if (st === 'failed' && s.error) {
+        html += ` <span class="muted" style="font-size:12px">(${escapeHtml(s.error)})</span>`;
+      }
+      if (w.capture_available) {
+        html += ` <a class="secondary" style="padding:2px 8px;font-size:12px;margin-left:6px" href="/api/handshake-watch.php?action=capture&id=${Number(w.id)}">⬇ pcap</a>`;
+      }
+      return html;
+    };
+    const waveHtml = (w) => `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+        <div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div><strong style="font-family:ui-monospace,monospace">${escapeHtml(w.src_ip)}</strong>
+            <span class="muted">${w.isp ? escapeHtml(w.isp) : ''}${w.country ? ' · ' + escapeHtml(w.country) : ''}</span></div>
+          <div>${w.ended_at ? `<span class="badge unknown">${T('js.g.hs_ended')}</span>` : `<span class="badge down">${T('js.g.inc_ongoing')}</span>`}</div>
+        </div>
+        <div style="font-size:13px;margin-top:4px">${escapeHtml(w.started_at)} UTC · ${fmtDur(w.started_at, w.ended_at)} ·
+          ${T('js.g.hs_wave_stats', Number(w.failed_total), Number(w.attempts_total), Number(w.peak_per_min))}</div>
+        ${w.clients && w.clients.length ? `<div class="muted" style="font-size:12px;margin-top:4px">${T('js.g.hs_clients')}: ${w.clients.map((c) => escapeHtml(c.name)).join(', ')}</div>` : ''}
+        <div style="margin-top:6px">${capHtml(w)}</div>
+      </div>`;
+
+    if (offset) {
+      body.querySelector('#hs-waves').insertAdjacentHTML('beforeend', (d.waves || []).map(waveHtml).join(''));
+    } else {
+      box.innerHTML = `
+        <div class="field-row" style="flex-direction:column;align-items:stretch">
+          <label style="font-weight:600">${T('js.g.hs_24h')}</label>
+          <div style="overflow-x:auto;margin-top:6px;padding:6px;height:44px;background:var(--bg);border:1px solid var(--border);border-radius:8px;display:flex;align-items:flex-end">${strip}</div>
+        </div>
+        <details style="margin:12px 0">
+          <summary style="cursor:pointer">${T('js.g.hs_settings')}</summary>
+          <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:8px;align-items:flex-end">
+            <label style="font-size:12px">${T('js.g.hs_min_failed')}<br><input type="number" id="hs-min-failed" min="1" value="${Number(cfg.min_failed)}" style="width:90px"></label>
+            <label style="font-size:12px">${T('js.g.hs_min_ratio')}<br><input type="number" id="hs-min-ratio" min="0" max="100" value="${Math.round((cfg.min_ratio || 0) * 100)}" style="width:90px"></label>
+            <label style="font-size:12px">${T('js.g.hs_quiet')}<br><input type="number" id="hs-quiet" min="1" value="${Number(cfg.quiet_minutes)}" style="width:90px"></label>
+            <label style="font-size:12px">${T('js.g.hs_cap_secs')}<br><input type="number" id="hs-cap-secs" min="10" max="300" value="${Number(cfg.capture_seconds)}" style="width:90px"></label>
+            <label style="font-size:12px"><input type="checkbox" id="hs-capture" ${cfg.capture ? 'checked' : ''}> ${T('js.g.hs_capture')}</label>
+            <label style="font-size:12px"><input type="checkbox" id="hs-email" ${cfg.alert_email ? 'checked' : ''}> ${T('js.g.hs_email')}</label>
+            <button class="secondary" id="hs-save">${T('js.g.hs_save')}</button>
+          </div>
+        </details>
+        <label style="font-weight:600">${T('js.g.hs_waves_title')}</label>
+        <div id="hs-waves" style="margin-top:6px">${(d.waves || []).length ? d.waves.map(waveHtml).join('') : `<p class="muted">${T('js.g.hs_none')}</p>`}</div>
+        <div id="hs-more"></div>`;
+      body.querySelector('#hs-save').addEventListener('click', async (ev) => {
+        const btn = ev.currentTarget; btn.disabled = true;
+        try {
+          await api.hsSaveConfig({
+            min_failed: Number(body.querySelector('#hs-min-failed').value),
+            min_ratio: Number(body.querySelector('#hs-min-ratio').value) / 100,
+            quiet_minutes: Number(body.querySelector('#hs-quiet').value),
+            capture_seconds: Number(body.querySelector('#hs-cap-secs').value),
+            capture: body.querySelector('#hs-capture').checked,
+            alert_email: body.querySelector('#hs-email').checked,
+          });
+          toast(T('js.g.hs_saved'), 'success');
+        } catch (e) { toast(e.message, 'error'); } finally { btn.disabled = false; }
+      });
+    }
+    const shown = offset + (d.waves || []).length;
+    const more = body.querySelector('#hs-more');
+    more.innerHTML = shown < d.total ? `<button class="secondary" id="hs-more-btn">${T('js.g.probe_more')} (${shown}/${d.total})</button>` : '';
+    const mb = more.querySelector('#hs-more-btn');
+    if (mb) mb.addEventListener('click', () => renderHsWatchTab(server, body, shown));
+  }
+
   async function renderProbeTab(server, body) {
     body.innerHTML = `<p class="muted">${T('js.g.probe_desc')}</p><div id="probe-box"><span class="muted">${T('js.g.inc_loading')}</span></div>`;
     const box = body.querySelector('#probe-box');

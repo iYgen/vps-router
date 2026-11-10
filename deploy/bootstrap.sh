@@ -113,6 +113,7 @@ install -o root -g root -m 750 "$PROV_SRC/entry-zapret.sh"                      
 install -o root -g root -m 755 "$PROV_SRC/entry-wg-status.sh"                          /usr/local/sbin/vpsrouter-wg-status.sh
 install -o root -g root -m 755 "$PROV_SRC/pkg-manage.sh"                            /usr/local/sbin/vpsrouter-pkg-manage.sh
 install -o root -g root -m 755 "$PROV_SRC/entry-tgproxy.sh"                            /usr/local/sbin/vpsrouter-tgproxy.sh
+install -o root -g root -m 755 "$PROV_SRC/entry-hs-capture.sh"                         /usr/local/sbin/vpsrouter-hs-capture.sh
 
 cat > /etc/sudoers.d/panel-zapret <<EOF
 $WEB_USER ALL=(root) NOPASSWD: /usr/local/sbin/vpsrouter-zapret.sh
@@ -126,6 +127,14 @@ EOF
 cat > /etc/sudoers.d/panel-tgproxy <<EOF
 $WEB_USER ALL=(root) NOPASSWD: /usr/local/sbin/vpsrouter-tgproxy.sh
 EOF
+# Handshake watch: короткий захват трафика одного адреса (аргументы валидирует сам скрипт).
+cat > /etc/sudoers.d/panel-hscapture <<EOF
+$WEB_USER ALL=(root) NOPASSWD: /usr/local/sbin/vpsrouter-hs-capture.sh
+EOF
+# журнал sing-box для handshake_watch.php читается без root
+usermod -aG systemd-journal "$WEB_USER" 2>/dev/null || true
+command -v tcpdump >/dev/null 2>&1 || pkg_install tcpdump >/dev/null 2>&1 || true
+command -v whois >/dev/null 2>&1 || pkg_install whois >/dev/null 2>&1 || true
 cat > /etc/sudoers.d/panel-apply <<EOF
 $WEB_USER ALL=(root) NOPASSWD: /usr/local/sbin/apply-router.sh
 EOF

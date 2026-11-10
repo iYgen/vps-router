@@ -201,7 +201,7 @@
 
 `create-admin.php`, `collect_traffic.php`, `collect_exit_load.php`, `sync-ip-lists.php`,
 `free_pool_health.php`, `health_check.php`, `health_check_servers.php`, `risk_scan.php`,
-`security_scan.php`, `probe_intel.php` (активная защита), `check_updates.php`,
+`security_scan.php`, `probe_intel.php` (активная защита), `handshake_watch.php` (волны обрывов), `check_updates.php`,
 `scheduled_reboots.php`, `billing_tick.php` (срок/напоминания), плюс разовые
 обслуживающие скрипты (`encrypt-exit-secrets.php`, `fix-reality-key-encoding.php`).
 
@@ -380,6 +380,7 @@ geosite-категории. Привяжите группу к exit-сервер
   */5 * * * *  php /var/www/panel/bin/collect_traffic.php
   0 * * * *    php /var/www/panel/bin/collect_exit_load.php
   */10 * * * * php /var/www/panel/bin/probe_intel.php
+  * * * * *    php /var/www/panel/bin/handshake_watch.php   # пользователь панели — в группе systemd-journal
   30 3 * * *   php /var/www/panel/bin/sync-ip-lists.php
   0 */6 * * *  php /var/www/panel/bin/security_scan.php
   0 */6 * * *  php /var/www/panel/bin/check_updates.php

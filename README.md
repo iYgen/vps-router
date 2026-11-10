@@ -199,7 +199,7 @@ cabinet builder, and a module system to turn features on and off.
 
 `create-admin.php`, `collect_traffic.php`, `collect_exit_load.php`, `sync-ip-lists.php`,
 `free_pool_health.php`, `health_check.php`, `health_check_servers.php`, `risk_scan.php`,
-`security_scan.php`, `probe_intel.php` (active protection), `check_updates.php`,
+`security_scan.php`, `probe_intel.php` (active protection), `handshake_watch.php` (handshake waves), `check_updates.php`,
 `scheduled_reboots.php`, `billing_tick.php` (expiry/reminders), plus one-off maintenance
 scripts (`encrypt-exit-secrets.php`, `fix-reality-key-encoding.php`).
 
@@ -380,6 +380,7 @@ it and restarts the service. There is a preview and a roll back to the previous 
   */5 * * * *  php /var/www/panel/bin/collect_traffic.php
   0 * * * *    php /var/www/panel/bin/collect_exit_load.php
   */10 * * * * php /var/www/panel/bin/probe_intel.php
+  * * * * *    php /var/www/panel/bin/handshake_watch.php   # panel user must be in systemd-journal
   30 3 * * *   php /var/www/panel/bin/sync-ip-lists.php
   0 */6 * * *  php /var/www/panel/bin/security_scan.php
   0 */6 * * *  php /var/www/panel/bin/check_updates.php
