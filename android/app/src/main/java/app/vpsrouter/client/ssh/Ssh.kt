@@ -152,24 +152,24 @@ class SshConnection private constructor(private val session: Session, val target
                     throw SshException("Не удалось прочитать SSH-ключ: ${e.message}", e)
                 }
             }
+            // Ключ хоста сверяется во время рукопожатия — ДО отправки пароля или ключа.
+            // Первое подключение запоминает отпечаток (TOFU), дальше чужой ключ — отказ.
+            val keys = PinnedHostKeys(jsch, t.knownHostKey)
+            jsch.setHostKeyRepository(keys)
             val s = jsch.getSession(t.user, t.host, t.port)
             if (!t.password.isNullOrEmpty()) s.setPassword(t.password)
             s.setConfig(Properties().apply {
-                put("StrictHostKeyChecking", "no")
+                put("StrictHostKeyChecking", "yes")
                 put("PreferredAuthentications", "publickey,keyboard-interactive,password")
             })
             s.setServerAliveInterval(15_000)
             try {
                 s.connect(20_000)
             } catch (e: Exception) {
+                if (keys.mismatch) throw SshException("Ключ хоста ${t.host} изменился (был ${t.knownHostKey}, стал ${keys.seen}). Возможна подмена сервера — подключение прервано, пароль и ключ не отправлены. Если сервер переустановлен, сбросьте ключ в карточке узла.", e)
                 throw SshException(explain(e, t), e)
             }
-            val fp = s.hostKey.getFingerPrint(jsch)
-            if (t.knownHostKey != null && t.knownHostKey != fp) {
-                s.disconnect()
-                throw SshException("Ключ хоста ${t.host} изменился (был ${t.knownHostKey}, стал $fp). Возможна подмена сервера — подключение прервано. Если сервер переустановлен, сбросьте ключ в карточке узла.")
-            }
-            SshConnection(s, t, fp)
+            SshConnection(s, t, keys.seen ?: s.hostKey.getFingerPrint(jsch))
         }
 
         private fun explain(e: Exception, t: SshTarget): String {
@@ -183,4 +183,28 @@ class SshConnection private constructor(private val session: Session, val target
             }
         }
     }
+}
+
+/** Хранилище ключей хостов на один сервер: известен отпечаток — пускаем только его. */
+private class PinnedHostKeys(private val jsch: JSch, private val known: String?) : com.jcraft.jsch.HostKeyRepository {
+    var seen: String? = null
+        private set
+    var mismatch = false
+        private set
+
+    override fun check(host: String?, key: ByteArray?): Int {
+        val fp = runCatching { com.jcraft.jsch.HostKey(host, key).getFingerPrint(jsch) }.getOrNull()
+            ?: return com.jcraft.jsch.HostKeyRepository.CHANGED
+        seen = fp
+        if (known == null || known == fp) return com.jcraft.jsch.HostKeyRepository.OK
+        mismatch = true
+        return com.jcraft.jsch.HostKeyRepository.CHANGED
+    }
+
+    override fun add(hostkey: com.jcraft.jsch.HostKey?, ui: com.jcraft.jsch.UserInfo?) {}
+    override fun remove(host: String?, type: String?) {}
+    override fun remove(host: String?, type: String?, key: ByteArray?) {}
+    override fun getKnownHostsRepositoryID(): String = "vpsrouter"
+    override fun getHostKey(): Array<com.jcraft.jsch.HostKey> = emptyArray()
+    override fun getHostKey(host: String?, type: String?): Array<com.jcraft.jsch.HostKey> = emptyArray()
 }

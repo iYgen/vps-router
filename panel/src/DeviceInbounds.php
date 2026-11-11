@@ -672,7 +672,7 @@ class DeviceInbounds
                     );
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-trojan.txt");
                     $out[$protocol]['outbound'] = ['type' => 'trojan', 'server' => $host, 'server_port' => $port, 'password' => $client['password'],
-                        'tls' => ['enabled' => true, 'server_name' => $sni, 'insecure' => true]];
+                        'tls' => self::clientTls($sni)];
                     break;
 
                 case 'hysteria2':
@@ -691,7 +691,7 @@ class DeviceInbounds
                         . '/?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986) . '#' . rawurlencode($name);
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-hysteria2.txt");
                     $hy = ['type' => 'hysteria2', 'server' => $host, 'server_port' => $port, 'password' => $client['password'],
-                        'tls' => ['enabled' => true, 'server_name' => self::tlsSni(), 'insecure' => true]];
+                        'tls' => self::clientTls(self::tlsSni())];
                     if ($obfs) {
                         $hy['obfs'] = ['type' => 'salamander', 'password' => $obfs];
                     }
@@ -837,6 +837,38 @@ class DeviceInbounds
     private static function pemLines(string $pem): array
     {
         return array_values(array_filter(array_map('trim', explode("\n", $pem)), fn($l) => $l !== ''));
+    }
+
+    /**
+     * TLS клиента приложения для Trojan/Hysteria2: сертификат сервера самоподписанный, поэтому
+     * вместо «не проверять» закрепляем его открытый ключ (sha256 SPKI, base64) — подменить
+     * сервер посередине нельзя. Без openssl — прежнее поведение (insecure).
+     */
+    private static function clientTls(string $sni): array
+    {
+        $tls = ['enabled' => true, 'server_name' => $sni];
+        if ($spki = self::spkiPin()) {
+            $tls['certificate_public_key_sha256'] = [$spki];
+        } else {
+            $tls['insecure'] = true;
+        }
+        return $tls;
+    }
+
+    /** base64(sha256(SubjectPublicKeyInfo DER)) сертификата inbound — формат sing-box. */
+    public static function spkiPin(): ?string
+    {
+        $cert = self::cfg('inbound_tls_cert');
+        if (!$cert || !function_exists('openssl_pkey_get_public')) {
+            return null;
+        }
+        $pub = @openssl_pkey_get_public($cert);
+        $pem = $pub ? (openssl_pkey_get_details($pub)['key'] ?? null) : null;
+        if (!$pem || !preg_match('/-----BEGIN PUBLIC KEY-----(.+?)-----END PUBLIC KEY-----/s', $pem, $m)) {
+            return null;
+        }
+        $der = base64_decode(preg_replace('/\s+/', '', $m[1]), true);
+        return $der ? base64_encode(hash('sha256', $der, true)) : null;
     }
 
     private static function certPin(): ?string

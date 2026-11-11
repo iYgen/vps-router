@@ -41,6 +41,7 @@ class Importer internal constructor(
 @Composable
 fun rememberImporter(onPanelLink: () -> Unit = {}, onImported: (TunnelProfile) -> Unit = {}): Pair<Importer, @Composable () -> Unit> {
     val ctx = LocalContext.current
+    val askFirst = rememberAskFirst()
     var text by remember { mutableStateOf<String?>(null) }
     val scan = rememberLauncherForActivityResult(ScanContract()) { r ->
         val c = r.contents ?: return@rememberLauncherForActivityResult
@@ -54,7 +55,7 @@ fun rememberImporter(onPanelLink: () -> Unit = {}, onImported: (TunnelProfile) -
     }
     val importer = remember {
         Importer(
-            scan = { scan.launch(ScanOptions().setPrompt("Наведите на QR-код конфигурации").setBeepEnabled(false).setOrientationLocked(false)) },
+            scan = { askFirst(Perm.CAMERA) { scan.launch(ScanOptions().setPrompt("Наведите на QR-код конфигурации").setBeepEnabled(false).setOrientationLocked(false)) } },
             file = { pick.launch(arrayOf("*/*")) },
             paste = { text = "" },
         )
@@ -118,6 +119,7 @@ fun rememberVpnToggle(): (TunnelProfile) -> Unit {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<TunnelProfile?>(null) }
+    val askFirst = rememberAskFirst()
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
         val p = pending
         pending = null
@@ -129,7 +131,8 @@ fun rememberVpnToggle(): (TunnelProfile) -> Unit {
         if (st.activeId == t.id && st.state == Tunnel.State.UP) scope.launch { app.tunnels.stop() }
         else {
             val intent = VpnService.prepare(ctx)
-            if (intent != null) { pending = t; perm.launch(intent) } else scope.launch { app.tunnels.start(t) }
+            if (intent != null) askFirst(Perm.VPN) { VpnService.prepare(ctx)?.let { pending = t; perm.launch(it) } ?: scope.launch { app.tunnels.start(t) } }
+            else scope.launch { app.tunnels.start(t) }
         }
     }
 }

@@ -156,6 +156,10 @@ data class AppSettings(
     val hiddenApps: List<String> = emptyList(),
     /** Скорость VPN в строке состояния (значок уведомления у камеры). */
     val speedInStatusBar: Boolean = false,
+    /** Какую версию условий (права и данные) пользователь принял; 0 — ещё не видел. */
+    val consentVersion: Int = 0,
+    /** Проверять обновления приложения в GitHub (сетевой запрос к github.com). */
+    val githubUpdates: Boolean = true,
 )
 
 /** Маршрут (группа правил) панели VPS Router: что и через какой выход идёт на сервере. */

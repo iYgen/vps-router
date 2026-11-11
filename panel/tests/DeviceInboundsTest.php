@@ -95,6 +95,13 @@ class DeviceInboundsTest extends TestCase
         $this->assertSame($client['uuid'], $configs['vless']['outbound']['uuid']);
         $this->assertSame('testpub', $configs['vless']['outbound']['tls']['reality']['public_key']);
         $this->assertSame('salamander', $configs['hysteria2']['outbound']['obfs']['type']);
+        // Самоподписанный сертификат закреплён по ключу, а не «insecure».
+        foreach (['trojan', 'hysteria2'] as $p) {
+            $tls = $configs[$p]['outbound']['tls'];
+            $this->assertArrayNotHasKey('insecure', $tls, $p);
+            $this->assertSame([DeviceInbounds::spkiPin()], $tls['certificate_public_key_sha256'], $p);
+            $this->assertSame(32, strlen(base64_decode($tls['certificate_public_key_sha256'][0])));
+        }
         $this->assertArrayNotHasKey('outbound', $configs['wireguard']);
         $this->assertArrayNotHasKey('outbound', $configs['amneziawg']);
 
@@ -104,6 +111,9 @@ class DeviceInboundsTest extends TestCase
                 $cfg = ['outbounds' => [$configs[$p]['outbound'] + ['tag' => 'proxy']]];
                 file_put_contents("$dir/$p.json", json_encode($cfg, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
             }
+            file_put_contents("$dir/tls.crt", Setting::get('inbound_tls_cert'));
+            file_put_contents("$dir/tls.key", Setting::get('inbound_tls_key'));
+            file_put_contents("$dir/trojan.pass", $client['password']);
         }
     }
 

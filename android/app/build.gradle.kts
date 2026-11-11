@@ -18,8 +18,8 @@ android {
         targetSdk = 35
         // Версия приложения. При каждом выпуске увеличивайте versionCode — по нему
         // приложение и панель понимают, что есть обновление.
-        versionCode = 6
-        versionName = "0.4.1"
+        versionCode = 7
+        versionName = "0.4.2"
         // Откуда приложение само скачивает обновления (без панели): каталог panel/app/ в репозитории.
         buildConfigField("String", "UPDATE_RAW_URL", "\"https://raw.githubusercontent.com/iYgen/vps-router/main/panel/app/\"")
     }

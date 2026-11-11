@@ -62,16 +62,16 @@ import org.amnezia.awg.backend.Tunnel
 /** Группа соединений одного источника: устройство панели, свой сервер или импорт. */
 data class ConnGroup(val key: String, val title: String, val items: List<TunnelProfile>)
 
-/** Тип соединения внутри группы: «Напрямую · AmneziaWG» / «Через <ретранслятор>». */
+/** Тип соединения внутри группы: «Без ретранслятора · AmneziaWG» / «Через <ретранслятор> · VLESS+Reality». */
 fun connKind(t: TunnelProfile): String {
-    if (t.via != null) return "Через ${t.via}"
-    val fmt = if (t.source == "panel") t.origin?.split(':')?.getOrNull(2) else null
+    val fmt = if (t.source == "panel") t.origin?.split(':')?.getOrNull(2)?.substringBefore('@') else null
     val proto = when {
         fmt != null -> PanelClient.formatLabel(fmt)
         Regex("""(?m)^\s*Jc\s*=""").containsMatchIn(t.config) -> "AmneziaWG"
         else -> "WireGuard"
     }
-    return "Напрямую · $proto"
+    // «Без ретранслятора» — прямо к серверу VPS Router; трафик всё равно идёт по маршрутам панели.
+    return if (t.via != null) "Через ${t.via} · $proto" else "Без ретранслятора · $proto"
 }
 
 private fun groupKey(t: TunnelProfile): String = when (t.source) {
@@ -196,13 +196,14 @@ fun DeviceChoiceDialog() {
 @Composable
 fun rememberSpeedToggle(): () -> Unit {
     val ctx = LocalContext.current
+    val askFirst = rememberAskFirst()
     val perm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) App.instance.repo.update { it.copy(settings = it.settings.copy(speedInStatusBar = true)) }
         else ctx.toast("Без разрешения на уведомления скорость в строке состояния не показать")
     }
     return {
         val on = App.instance.repo.data.value.settings.speedInStatusBar
-        if (!on && !app.vpsrouter.client.tunnel.SpeedNotifier.canPost(ctx)) perm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        if (!on && !app.vpsrouter.client.tunnel.SpeedNotifier.canPost(ctx)) askFirst(Perm.NOTIFICATIONS) { perm.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
         else {
             App.instance.repo.update { it.copy(settings = it.settings.copy(speedInStatusBar = !on)) }
             if (on) app.vpsrouter.client.tunnel.SpeedNotifier.hide(ctx)

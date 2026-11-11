@@ -202,7 +202,7 @@ fun HomeScreen(nav: NavController) {
                     item(key = "x:$f") {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
                             val via = f.substringAfter('@', "").ifEmpty { null }?.let { app.panel.relayName(it) }
-                            Text(if (via != null) "Через $via · " + PanelClient.formatLabel(f.substringBefore('@')) else "Напрямую · " + PanelClient.formatLabel(f),
+                            Text(if (via != null) "Через $via · " + PanelClient.formatLabel(f.substringBefore('@')) else "Без ретранслятора · " + PanelClient.formatLabel(f),
                                 color = Pal.muted, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(why, color = Pal.warn, fontSize = 12.sp)
                         }

@@ -4,6 +4,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import app.vpsrouter.client.awg.AwgFactory
 import app.vpsrouter.client.data.AppData
 import app.vpsrouter.client.data.AppSettings
@@ -60,8 +63,10 @@ class SeededApp : App() {
         val viaRelay = direct.copy(id = "t2", name = "Амстердам · Pixel 8 ⇢ Белый IP (Москва)", config = AwgFactory.withEndpointHost(direct.config, relay.host), via = relay.name)
         val fromPanel = TunnelProfile(id = "t3", name = "Мой телефон", config = AwgFactory.clientConfig(awg, p2, "panel.example.com"), source = "panel", origin = "panel:4:amneziawg")
         val panelRelay = fromPanel.copy(id = "t4", name = "Мой телефон ⇢ relay-1", origin = "panel:4:amneziawg@5", via = "relay-1")
+        val panelVless = TunnelProfile(id = "t5", name = "Мой телефон", kind = "singbox", source = "panel", origin = "panel:4:vless",
+            config = """{"type":"vless","server":"panel.example.com","server_port":443,"uuid":"u"}""")
         val data = AppData(
-            tunnels = listOf(direct, viaRelay, fromPanel, panelRelay),
+            tunnels = listOf(direct, viaRelay, fromPanel, panelRelay, panelVless),
             traffic = mapOf(
                 "t3" to ConnTraffic(rx = 3_400_000_000, tx = 420_000_000, lastUsed = System.currentTimeMillis() - 5 * 3600_000),
                 "t4" to ConnTraffic(rx = 810_000_000, tx = 95_000_000, lastUsed = System.currentTimeMillis() - 26 * 3600_000),
@@ -89,7 +94,7 @@ class SeededApp : App() {
                 ),
             ),
             lastTunnelId = "t1",
-            settings = AppSettings(onboarded = true, routeMode = RouteMode.EXCLUDE_APPS, apps = listOf("com.example.torrent"), bypassLan = true, hiddenApps = listOf("ru.sberbankmobile", "ru.gosuslugi")),
+            settings = AppSettings(onboarded = true, consentVersion = app.vpsrouter.client.ui.CONSENT_VERSION, githubUpdates = false, routeMode = RouteMode.EXCLUDE_APPS, apps = listOf("com.example.torrent"), bypassLan = true, hiddenApps = listOf("ru.sberbankmobile", "ru.gosuslugi")),
         )
         return MemoryStore(this, Json { encodeDefaults = true }.encodeToString(AppData.serializer(), data))
     }
@@ -138,6 +143,8 @@ class SeededScreenshotTest {
     @Test fun settings() {
         rule.clickLast("Настройки")
         rule.shot("06_settings")
+        rule.onAllNodes(hasScrollAction())[0].performScrollToNode(hasText("Права и данные")); rule.click("Права и данные")
+        rule.shot("13_permissions")
     }
 
     @Test fun panel() {
@@ -155,6 +162,8 @@ class FirstRunScreenshotTest {
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
 
     @Test fun firstRun() {
+        rule.shot("00_consent")
+        rule.click("Согласен")
         rule.shot("10_onboarding")
         rule.click("Подключить существующий сервер")
         rule.shot("11_onboarding_connect")

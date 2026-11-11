@@ -68,7 +68,7 @@ fun AppRoot(activity: MainActivity) {
         // Тихо пробуем подключиться к панели (если она настроена).
         if (app.panel.state.value == PanelState.OFFLINE) app.panel.connect()
         // Обновление приложения из GitHub — не зависит от панели (раз в 6 часов).
-        app.updater.checkGithubIfStale()
+        if (app.repo.data.value.settings.githubUpdates) app.updater.checkGithubIfStale()
     }
 
     // Ссылка vpsrouter://panel из QR/браузера — на экран входа в панель.
@@ -127,6 +127,7 @@ fun AppRoot(activity: MainActivity) {
             composable("server/{id}") { ServerDetailScreen(it.arguments?.getString("id").orEmpty(), nav) }
             composable("wizard") { AddServerWizard(nav) }
             composable("panel-relay") { PanelRelayWizard(nav) }
+            composable("permissions") { PermissionsScreen(nav) }
         }
     }
 
@@ -139,6 +140,7 @@ fun AppRoot(activity: MainActivity) {
         nav.navigate("home") { popUpTo(0) { inclusive = true } }
     }
     DeviceChoiceDialog()
+    ConsentGate(nav, route)
 
     // .conf, открытый из файлового менеджера/мессенджера
     val pending by activity.pendingImport

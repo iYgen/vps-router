@@ -38,6 +38,7 @@ private fun rememberInstaller(): () -> Unit {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var ready by remember { mutableStateOf<File?>(null) }
+    val askFirst = rememberAskFirst()
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         val f = ready
         if (f != null && !app.updater.needsInstallPermission()) ctx.startActivity(app.updater.installIntent(f))
@@ -49,8 +50,7 @@ private fun rememberInstaller(): () -> Unit {
             val f = runCatching { app.updater.download(client) }.getOrElse { ctx.toast(it.message ?: "Ошибка загрузки"); return@launch }
             ready = f
             if (app.updater.needsInstallPermission()) {
-                ctx.toast("Разрешите установку обновлений для VPS Router")
-                permLauncher.launch(app.updater.installPermissionIntent())
+                askFirst(Perm.INSTALL) { permLauncher.launch(app.updater.installPermissionIntent()) }
             } else ctx.startActivity(app.updater.installIntent(f))
         }
     }

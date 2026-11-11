@@ -92,7 +92,7 @@ object SpeedNotifier {
             ctx, 0, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val n = Notification.Builder(ctx, CHANNEL)
+        val b = Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(Icon.createWithBitmap(iconBitmap(down, up)))
             .setContentTitle("↓ ${human(down)}   ↑ ${human(up)}")
             .setContentText(title)
@@ -101,8 +101,20 @@ object SpeedNotifier {
             .setShowWhen(false)
             .setCategory(Notification.CATEGORY_STATUS)
             .setContentIntent(open)
-            .build()
+        promote(b, "↓" + short(down))
+        val n = b.build()
         runCatching { nm(ctx).notify(ID, n) }.onSuccess { shown = true }
+    }
+
+    /**
+     * Android 16+ (Live Updates): уведомление поднимается в «островок»/чип у камеры
+     * со скоростью. Так же работают капсулы Honor MagicOS 10, Pixel и др. на Android 16.
+     * Вызов через рефлексию — API 36 появился позже compileSdk; на старых системах ничего не делает.
+     */
+    private fun promote(b: Notification.Builder, chip: String) {
+        if (Build.VERSION.SDK_INT < 36) return
+        runCatching { Notification.Builder::class.java.getMethod("setRequestPromotedOngoing", Boolean::class.javaPrimitiveType).invoke(b, true) }
+        runCatching { Notification.Builder::class.java.getMethod("setShortCriticalText", String::class.java).invoke(b, chip) }
     }
 
     fun hide(ctx: Context) {

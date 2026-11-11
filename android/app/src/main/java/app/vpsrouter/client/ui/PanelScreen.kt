@@ -114,6 +114,7 @@ private fun PanelLogin(initial: PanelProfile?, error: String?, onConnect: (Panel
     }
     val prefill by App.instance.panel.prefill.collectAsState()
     LaunchedEffect(prefill) { prefill?.let { applyLink(it); App.instance.panel.prefill.value = null } }
+    val askFirst = rememberAskFirst()
     val scan = rememberLauncherForActivityResult(ScanContract()) { r ->
         val p = PanelLink.parse(r.contents)
         when {
@@ -131,7 +132,7 @@ private fun PanelLogin(initial: PanelProfile?, error: String?, onConnect: (Panel
         }
         item {
             OutlinedButton(
-                onClick = { scan.launch(ScanOptions().setPrompt("QR панели VPS Router").setBeepEnabled(false).setOrientationLocked(false)) },
+                onClick = { askFirst(Perm.CAMERA) { scan.launch(ScanOptions().setPrompt("QR панели VPS Router").setBeepEnabled(false).setOrientationLocked(false)) } },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Filled.QrCodeScanner, null); Spacer(Modifier.width(8.dp)); Text("Сканировать QR панели")

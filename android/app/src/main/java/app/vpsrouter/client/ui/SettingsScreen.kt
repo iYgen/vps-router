@@ -139,6 +139,7 @@ fun SettingsScreen(nav: NavController) {
                 )
                 SettingRow("Проверить соединение", "DNS, серверы, ретрансляторы, панель", onClick = { nav.navigate("diagnostics") })
                 SettingRow("Журнал", "События подключения и операций на серверах", onClick = { nav.navigate("log") })
+                SettingRow("Права и данные", "Какие разрешения выданы, что хранится и куда приложение подключается", onClick = { nav.navigate("permissions") })
             }
         }
         item {
