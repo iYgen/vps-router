@@ -22,8 +22,9 @@ use App\Models\Setting;
  */
 class SelfUpdater
 {
-    private const DL_TIMEOUT = 60;
-    private const MAX_BYTES = 64 * 1024 * 1024; // 64 МБ — архив кода заведомо меньше
+    private const DL_TIMEOUT = 600;
+    // Архив репозитория вместе с APK приложения (~50 МБ); android/ исключён через .gitattributes.
+    private const MAX_BYTES = 256 * 1024 * 1024;
 
     /** Каталоги/файлы кода, которые бэкапим и накладываем (относительно корня). */
     private const CODE_PATHS = ['src', 'public', 'lang', 'migrations', 'bin', 'templates', 'app',
@@ -101,15 +102,30 @@ class SelfUpdater
         $log[] = 'Рабочая папка: ' . $work;
 
         // 1. Скачиваем архив.
-        $data = $fetcher ? $fetcher($url) : self::download($url);
-        if ($data === null || strlen($data) < 1024) {
-            return $fail('Не удалось скачать архив по ' . $url . ' (сеть/таймаут/блокировка). '
-                . 'Если прямого доступа к репозиторию нет — включите загрузку через exit.');
+        if ($fetcher) {
+            $data = $fetcher($url);
+            if ($data === null || strlen($data) < 1024) {
+                return $fail('Не удалось скачать архив по ' . $url . ' (сеть/таймаут/блокировка).');
+            }
+            if (file_put_contents($tgz, $data) === false) {
+                return $fail('Не удалось сохранить архив во временную папку.');
+            }
+        } else {
+            // Сразу в файл, а не в память: архив с APK весит десятки мегабайт.
+            $dlError = self::downloadTo($url, $tgz);
+            if ($dlError !== null) {
+                @unlink($tgz);
+                return $fail('Не удалось скачать архив по ' . $url . ': ' . $dlError
+                    . '. Если прямого доступа к GitHub нет — включите загрузку через exit.');
+            }
         }
-        if (file_put_contents($tgz, $data) === false) {
-            return $fail('Не удалось сохранить архив во временную папку.');
+        $log[] = 'Скачано: ' . self::human((int) @filesize($tgz));
+
+        // Целостность: оборванная загрузка даёт «unexpected end of file» при распаковке.
+        [$rc, $out] = self::sh('gzip -t ' . escapeshellarg($tgz) . ' 2>&1');
+        if ($rc !== 0) {
+            return $fail('Архив скачан не полностью (обрыв связи) — попробуйте ещё раз. ' . trim($out));
         }
-        $log[] = 'Скачано: ' . self::human(strlen($data));
 
         // 2. Распаковываем.
         [$rc, $out] = self::sh('tar xzf ' . escapeshellarg($tgz) . ' -C ' . escapeshellarg($extract) . ' 2>&1');
@@ -198,13 +214,22 @@ class SelfUpdater
         $log[] = $rc === 0 ? 'Откат из бэкапа выполнен.' : ('Откат не удался: ' . trim($out));
     }
 
-    /** Скачивание тела архива (через exit SOCKS если включено, иначе напрямую). */
-    private static function download(string $url): ?string
+    /**
+     * Скачивание архива в файл (через exit SOCKS если включено, иначе напрямую).
+     * Возвращает null при успехе или текст ошибки.
+     */
+    private static function downloadTo(string $url, string $dest): ?string
     {
+        @set_time_limit(self::DL_TIMEOUT + 120);
+        $curlErr = null;
         if (function_exists('curl_init')) {
+            $fh = @fopen($dest, 'wb');
+            if ($fh === false) {
+                return 'не удалось создать файл ' . $dest;
+            }
             $ch = curl_init($url);
             $opts = [
-                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FILE => $fh,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_MAXREDIRS => 5,
                 CURLOPT_TIMEOUT => self::DL_TIMEOUT,
@@ -212,25 +237,48 @@ class SelfUpdater
                 CURLOPT_USERAGENT => 'vps_router-self-updater',
                 CURLOPT_SSL_VERIFYPEER => true,
                 CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_FAILONERROR => true,
+                CURLOPT_NOPROGRESS => false,
+                // Защита от бесконечного ответа: прерываем, если больше MAX_BYTES.
+                CURLOPT_PROGRESSFUNCTION => fn($c, $dlTotal, $dlNow) => $dlNow > self::MAX_BYTES ? 1 : 0,
             ];
             if (Setting::get('list_fetch_via_exit', '0') === '1') {
                 $opts[CURLOPT_PROXY] = '127.0.0.1:' . SingboxConfigBuilder::LIST_FETCH_PORT;
                 $opts[CURLOPT_PROXYTYPE] = CURLPROXY_SOCKS5_HOSTNAME;
             }
             curl_setopt_array($ch, $opts);
-            $data = curl_exec($ch);
+            $ok = curl_exec($ch);
             $err = curl_errno($ch);
+            $msg = curl_error($ch);
             curl_close($ch);
-            if ($err === 0 && is_string($data) && $data !== '' && strlen($data) <= self::MAX_BYTES) {
-                return $data;
+            fclose($fh);
+            if ($ok && $err === 0 && (int) @filesize($dest) >= 1024) {
+                return null;
             }
+            $curlErr = $msg !== '' ? $msg : 'curl ' . $err;
         }
+        // Запасной путь без curl — потоково, тоже в файл.
         $ctx = stream_context_create(['http' => [
             'method' => 'GET', 'timeout' => self::DL_TIMEOUT, 'follow_location' => 1, 'max_redirects' => 5,
             'header' => "User-Agent: vps_router-self-updater\r\n",
         ], 'ssl' => ['verify_peer' => true, 'verify_peer_name' => true]]);
-        $data = @file_get_contents($url, false, $ctx, 0, self::MAX_BYTES);
-        return $data === false ? null : $data;
+        $in = @fopen($url, 'rb', false, $ctx);
+        if ($in === false) {
+            return $curlErr ?? 'сеть/таймаут/блокировка';
+        }
+        $out = @fopen($dest, 'wb');
+        $n = $out ? stream_copy_to_stream($in, $out, self::MAX_BYTES + 1) : false;
+        fclose($in);
+        if ($out) {
+            fclose($out);
+        }
+        if ($n === false || $n < 1024) {
+            return $curlErr ?? 'пустой ответ';
+        }
+        if ($n > self::MAX_BYTES) {
+            return 'архив больше ' . self::human(self::MAX_BYTES);
+        }
+        return null;
     }
 
     /** Ищет каталог .../panel внутри распакованного архива (архив GitHub: <repo>-<ref>/panel). */

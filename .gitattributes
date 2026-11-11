@@ -1,0 +1,5 @@
+# Архив репозитория (codeload.github.com/.../tar.gz) скачивает самообновление панели.
+# Исходники Android-приложения панели не нужны (готовый APK лежит в panel/app/),
+# а с ядром sing-box они весят >40 МБ — старые панели обрезают архив на 64 МБ.
+android/** export-ignore
+docs/** export-ignore
