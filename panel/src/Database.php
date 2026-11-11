@@ -30,7 +30,13 @@ class Database
 
             self::$pdo = $pdo;
 
-            self::migrate($isNew);
+            // Во время самообновления (SelfUpdater) новый код уже на диске, и любой
+            // запрос (браузер, приложение, крон) начал бы сам накатывать миграции
+            // параллельно с обновлятором → «database is locked» и откат обновления.
+            // Пока идёт обновление, миграции делает только обновлятор.
+            if ($isNew || !self::selfUpdateInProgress()) {
+                self::migrate($isNew);
+            }
         }
 
         return self::$pdo;
@@ -142,40 +148,77 @@ class Database
      */
     public static function migrate(bool $isNew = false): void
     {
-        $pdo = self::$pdo;
-        $pdo->exec(
+        $pdo = self::$pdo ?? self::get();
+        self::retry(fn() => $pdo->exec(
             'CREATE TABLE IF NOT EXISTS schema_migrations (
                 version TEXT PRIMARY KEY,
                 applied_at TEXT NOT NULL DEFAULT (datetime(\'now\'))
             )'
-        );
-
-        $applied = [];
-        foreach ($pdo->query('SELECT version FROM schema_migrations') as $row) {
-            $applied[$row['version']] = true;
-        }
+        ));
 
         $dir = __DIR__ . '/../migrations';
         $files = glob($dir . '/*.sql') ?: [];
         sort($files, SORT_NATURAL);
 
-        foreach ($files as $file) {
-            $version = basename($file, '.sql');
-            if (isset($applied[$version])) {
-                continue;
-            }
+        // Быстрый путь: всё уже накатано — ни блокировок, ни записи.
+        if (!self::pendingVersions($pdo, $files)) {
+            return;
+        }
 
-            $sql = file_get_contents($file);
-            $pdo->beginTransaction();
-            try {
-                $pdo->exec($sql);
-                $stmt = $pdo->prepare('INSERT INTO schema_migrations (version) VALUES (?)');
-                $stmt->execute([$version]);
-                $pdo->commit();
-            } catch (\Throwable $e) {
-                $pdo->rollBack();
-                throw new \RuntimeException("Миграция $version провалилась: " . $e->getMessage(), 0, $e);
+        // Несколько процессов (веб, крон, обновлятор) могут одновременно увидеть
+        // новые миграции. Файловая блокировка выстраивает их в очередь, а внутри
+        // очереди список применённых перечитывается — каждая миграция ровно один раз.
+        $lock = @fopen(App::config()['db_path'] . '.migrate.lock', 'c');
+        if ($lock) {
+            flock($lock, LOCK_EX);
+        }
+        try {
+            foreach ($files as $file) {
+                $version = basename($file, '.sql');
+                $sql = (string) file_get_contents($file);
+                try {
+                    // BEGIN IMMEDIATE: write-лок сразу, busy_timeout честно ждёт;
+                    // повтор с паузой, если база занята дольше (сборщик трафика и т.п.).
+                    self::transaction(function (\PDO $pdo) use ($version, $sql) {
+                        $done = $pdo->prepare('SELECT 1 FROM schema_migrations WHERE version = ?');
+                        $done->execute([$version]);
+                        if ($done->fetchColumn()) {
+                            return;
+                        }
+                        $pdo->exec($sql);
+                        $pdo->prepare('INSERT INTO schema_migrations (version) VALUES (?)')->execute([$version]);
+                    }, 10);
+                } catch (\Throwable $e) {
+                    throw new \RuntimeException("Миграция $version провалилась: " . $e->getMessage(), 0, $e);
+                }
+            }
+        } finally {
+            if ($lock) {
+                flock($lock, LOCK_UN);
+                fclose($lock);
             }
         }
+    }
+
+    /** @param string[] $files */
+    private static function pendingVersions(\PDO $pdo, array $files): array
+    {
+        $applied = [];
+        foreach (self::retry(fn() => $pdo->query('SELECT version FROM schema_migrations')->fetchAll()) as $row) {
+            $applied[$row['version']] = true;
+        }
+        return array_values(array_filter(array_map(fn($f) => basename($f, '.sql'), $files), fn($v) => !isset($applied[$v])));
+    }
+
+    /**
+     * Идёт самообновление: SelfUpdater распаковывает архив в .update/extract и
+     * удаляет его в конце. Свежесть 10 минут — чтобы оборванное обновление не
+     * блокировало миграции навсегда.
+     */
+    public static function selfUpdateInProgress(): bool
+    {
+        $dir = dirname(__DIR__) . '/.update/extract';
+        clearstatcache(true, $dir);
+        return is_dir($dir) && (time() - (int) @filemtime($dir)) < 600;
     }
 }

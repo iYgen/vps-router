@@ -51,8 +51,12 @@ try {
             Http::error('Самообновление недоступно (не настроен репозиторий/архив или нет прав на запись в каталог панели).', 400);
         }
         $r = SelfUpdater::run();
-        AuditLog::record('update.self', ($r['ok'] ? 'ok ' : 'fail ') . $r['from'] . '→' . ($r['to'] ?? '?')
+        try {
+            // Запись в журнал — не повод сообщать об ошибке уже выполненного обновления.
+            AuditLog::record('update.self', ($r['ok'] ? 'ok ' : 'fail ') . $r['from'] . '→' . ($r['to'] ?? '?')
             . ($r['error'] ? (' err=' . $r['error']) : ''));
+        } catch (\Throwable $ignore) {
+        }
         Http::json($r);
     }
 
