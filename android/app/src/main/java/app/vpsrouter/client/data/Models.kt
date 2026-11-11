@@ -147,6 +147,8 @@ data class AppSettings(
      * Для них сеть по умолчанию — обычная (без признака VPN), а адрес — домашний.
      */
     val hiddenApps: List<String> = emptyList(),
+    /** Скорость VPN в строке состояния (значок уведомления у камеры). */
+    val speedInStatusBar: Boolean = false,
 )
 
 /** Маршрут (группа правил) панели VPS Router: что и через какой выход идёт на сервере. */

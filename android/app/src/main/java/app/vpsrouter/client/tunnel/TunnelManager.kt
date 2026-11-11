@@ -75,7 +75,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                 state = newState,
                 activeId = if (newState == Tunnel.State.UP) profileId else _status.value.activeId,
             )
-            if (newState == Tunnel.State.DOWN) { statsJob?.cancel(); flushTraffic() }
+            if (newState == Tunnel.State.DOWN) { statsJob?.cancel(); flushTraffic(); SpeedNotifier.hide(context) }
         }
     }
 
@@ -120,6 +120,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
             }
             statsJob?.cancel()
             _status.value = TunnelStatus()
+            SpeedNotifier.hide(context)
             AppLog.i("Туннель отключён")
         }
     }
@@ -148,6 +149,10 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                         txRate = if (prev.tx in 1..tx) tx - prev.tx else 0,
                     )
                     if (++tick % 15 == 0) flushTraffic()
+                    val cur = _status.value
+                    if (repo.data.value.settings.speedInStatusBar) {
+                        SpeedNotifier.update(context, cur.rxRate, cur.txRate, repo.tunnel(t.profileId)?.name ?: "VPS Router")
+                    } else SpeedNotifier.hide(context)
                 }
                 delay(1000)
             }

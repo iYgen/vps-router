@@ -3,6 +3,13 @@ package app.vpsrouter.client.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -74,7 +82,8 @@ private fun groupKey(t: TunnelProfile): String = when (t.source) {
 
 fun connectionGroups(d: AppData): List<ConnGroup> {
     val my = d.panel?.myDeviceId
-    return d.tunnels.groupBy(::groupKey).map { (k, list) ->
+    // Только соединения этого телефона: устройства панели, кроме выбранного, не показываем.
+    return d.tunnels.filter { t -> my == null || t.source != "panel" || t.origin?.split(':')?.getOrNull(1)?.toIntOrNull() == my }.groupBy(::groupKey).map { (k, list) ->
         val sorted = list.sortedWith(compareBy({ it.via != null }, { it.via.orEmpty() }))
         val title = when {
             k.startsWith("panel:") -> {
@@ -100,13 +109,19 @@ fun BrandBar(nav: NavController) {
     val up = st.state == Tunnel.State.UP && st.activeId != null
     var menu by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().background(Pal.bg).padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp).heightIn(min = 44.dp),
+        // Отступ под строку состояния и вырез камеры (edge-to-edge) — иначе шапка уезжает под них.
+        Modifier.fillMaxWidth().background(Pal.bg).windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp).heightIn(min = 44.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Logo()
         Spacer(Modifier.width(10.dp))
         Text("VPS Router", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         StatusPill(if (up) "VPN вкл" else "VPN выкл", if (up) Pal.ok else Pal.muted)
+        val appData by App.instance.repo.data.collectAsState()
+        val speedOn = appData.settings.speedInStatusBar
+        val toggleSpeed = rememberSpeedToggle()
+        IconButton(onClick = toggleSpeed) { Icon(Icons.Filled.Speed, if (speedOn) "Скрыть скорость у камеры" else "Показать скорость у камеры", tint = if (speedOn) Pal.accent else Pal.muted) }
         Box {
             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Меню") }
             DropdownMenu(menu, { menu = false }) {
@@ -172,4 +187,26 @@ fun DeviceChoiceDialog() {
         confirmButton = {},
         dismissButton = { TextButton(enabled = !busy, onClick = { app.panel.skipDevice() }) { Text("Позже") } },
     )
+}
+
+/**
+ * Включить/выключить скорость в строке состояния. На Android 13+ сначала спрашивает
+ * разрешение на уведомления — без него значок показать нельзя.
+ */
+@Composable
+fun rememberSpeedToggle(): () -> Unit {
+    val ctx = LocalContext.current
+    val perm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) App.instance.repo.update { it.copy(settings = it.settings.copy(speedInStatusBar = true)) }
+        else ctx.toast("Без разрешения на уведомления скорость в строке состояния не показать")
+    }
+    return {
+        val on = App.instance.repo.data.value.settings.speedInStatusBar
+        if (!on && !app.vpsrouter.client.tunnel.SpeedNotifier.canPost(ctx)) perm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        else {
+            App.instance.repo.update { it.copy(settings = it.settings.copy(speedInStatusBar = !on)) }
+            if (on) app.vpsrouter.client.tunnel.SpeedNotifier.hide(ctx)
+            ctx.toast(if (on) "Скорость в строке состояния скрыта" else "Скорость показывается в строке состояния, пока включён VPN")
+        }
+    }
 }

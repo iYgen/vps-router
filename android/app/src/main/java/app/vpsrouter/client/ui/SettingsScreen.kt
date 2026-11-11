@@ -114,6 +114,10 @@ fun SettingsScreen(nav: NavController) {
                 SettingRow("Автоподключение", "При запуске приложения подключать последний туннель") {
                     Switch(s.autoConnect, { v -> app.repo.update { it.copy(settings = it.settings.copy(autoConnect = v)) } }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.accent))
                 }
+                val toggleSpeed = rememberSpeedToggle()
+                SettingRow("Скорость у камеры", "Входящая и исходящая скорость VPN в строке состояния") {
+                    Switch(s.speedInStatusBar, { toggleSpeed() }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.accent))
+                }
                 SettingRow("Kill Switch", "Блокировать интернет, если VPN отключился", onClick = { killInfo = true })
                 SettingRow("DNS", s.dnsOverride.ifBlank { "Из конфигурации туннеля" }, onClick = { dnsDialog = true })
                 SettingRow("Маршрутизация", "Профиль устройства и маршруты панели", onClick = { nav.navigate("routes") })
