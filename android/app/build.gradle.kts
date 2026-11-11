@@ -18,8 +18,10 @@ android {
         targetSdk = 35
         // Версия приложения. При каждом выпуске увеличивайте versionCode — по нему
         // приложение и панель понимают, что есть обновление.
-        versionCode = 5
-        versionName = "0.4.0"
+        versionCode = 6
+        versionName = "0.4.1"
+        // Откуда приложение само скачивает обновления (без панели): каталог panel/app/ в репозитории.
+        buildConfigField("String", "UPDATE_RAW_URL", "\"https://raw.githubusercontent.com/iYgen/vps-router/main/panel/app/\"")
     }
 
     // Ключ подписи релизов: .secrets/android/keystore.properties в корне репозитория
@@ -134,11 +136,28 @@ tasks.register("publishToPanel") {
         check(apk.exists()) { "Нет $apk" }
         val outDir = rootProject.file("../panel/app").apply { mkdirs() }
         val target = File(outDir, "vps-router.apk")
+        val verJson = File(outDir, "version.json")
+        val old = if (verJson.exists()) verJson.readText() else ""
+        val oldCode = Regex("\"versionCode\":\\s*(\\d+)").find(old)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val oldPanel = Regex("\"panel\":\\s*\"([^\"]*)\"").find(old)?.groupValues?.get(1)
         apk.copyTo(target, overwrite = true)
         val sha = MessageDigest.getInstance("SHA-256").digest(target.readBytes()).joinToString("") { "%02x".format(it) }
         val v = android.defaultConfig
-        File(outDir, "version.json").writeText(
-            """{"versionCode": ${v.versionCode}, "versionName": "${v.versionName}", "size": ${target.length()}, "sha256": "$sha", "minSdk": ${v.minSdk}}""" + "\n"
+
+        // Новый APK приходит на серверы только с обновлением панели, а панель видит обновление
+        // только по panel/VERSION. Если версия приложения выросла, а VERSION с прошлой публикации
+        // не меняли — повышаем последнюю цифру сами (1.3.0 → 1.3.1).
+        val panelVer = rootProject.file("../panel/VERSION")
+        var pv = panelVer.readText().trim()
+        if ((v.versionCode ?: 0) > oldCode && (oldPanel == null || oldPanel == pv)) {
+            val parts = pv.split('.').toMutableList()
+            parts[parts.lastIndex] = ((parts.last().toIntOrNull() ?: 0) + 1).toString()
+            pv = parts.joinToString(".")
+            panelVer.writeText(pv + "\n")
+            println("panel/VERSION -> $pv")
+        }
+        verJson.writeText(
+            """{"versionCode": ${v.versionCode}, "versionName": "${v.versionName}", "size": ${target.length()}, "sha256": "$sha", "minSdk": ${v.minSdk}, "panel": "$pv"}""" + "\n"
         )
         println("APK ${v.versionName} (${v.versionCode}) -> $target, sha256 $sha")
     }

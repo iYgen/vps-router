@@ -67,6 +67,8 @@ fun AppRoot(activity: MainActivity) {
         }
         // Тихо пробуем подключиться к панели (если она настроена).
         if (app.panel.state.value == PanelState.OFFLINE) app.panel.connect()
+        // Обновление приложения из GitHub — не зависит от панели (раз в 6 часов).
+        app.updater.checkGithubIfStale()
     }
 
     // Ссылка vpsrouter://panel из QR/браузера — на экран входа в панель.

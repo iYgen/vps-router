@@ -67,6 +67,7 @@ import androidx.navigation.NavController
 import app.vpsrouter.client.App
 import app.vpsrouter.client.R
 import app.vpsrouter.client.data.TunnelProfile
+import app.vpsrouter.client.panel.PanelClient
 import app.vpsrouter.client.panel.PanelState
 import app.vpsrouter.client.tunnel.ConfigTransform
 import kotlinx.coroutines.delay
@@ -97,6 +98,9 @@ fun HomeScreen(nav: NavController) {
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     var picker by remember { mutableStateOf(false) }
+    val issues by app.panel.formatIssues.collectAsState()
+    // Открыли список — заново подтянуть соединения этого телефона из панели (вдруг включили новые протоколы).
+    LaunchedEffect(picker) { if (picker && app.panel.state.value == PanelState.ONLINE) app.panel.refresh() }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(st.connectedAt) { while (st.connectedAt > 0) { now = System.currentTimeMillis(); delay(1000) } }
 
@@ -189,6 +193,20 @@ fun HomeScreen(nav: NavController) {
                     }
                     if (sel) Icon(Icons.Filled.Check, null, tint = Pal.accent)
                     IconButton(onClick = { picker = false; nav.navigate("tunnel/${t.id}") }) { Icon(Icons.Filled.Info, "Подробнее", tint = Pal.muted) }
+                }
+            }
+            // Протоколы этого устройства из панели, которые подключить не удалось, — с причиной.
+            if (g.key == "panel:${data.panel?.myDeviceId}") {
+                val have = g.items.mapNotNull { it.origin?.split(':')?.getOrNull(2) }.toSet()
+                issues.filterKeys { it !in have }.forEach { (f, why) ->
+                    item(key = "x:$f") {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                            val via = f.substringAfter('@', "").ifEmpty { null }?.let { app.panel.relayName(it) }
+                            Text(if (via != null) "Через $via · " + PanelClient.formatLabel(f.substringBefore('@')) else "Напрямую · " + PanelClient.formatLabel(f),
+                                color = Pal.muted, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(why, color = Pal.warn, fontSize = 12.sp)
+                        }
+                    }
                 }
             }
           }

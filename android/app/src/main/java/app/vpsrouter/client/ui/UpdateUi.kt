@@ -45,8 +45,7 @@ private fun rememberInstaller(): () -> Unit {
     }
     return {
         scope.launch {
-            val client = app.panel.client
-            if (client == null || app.panel.state.value != PanelState.ONLINE) { ctx.toast("Панель недоступна — обновление скачивается из неё"); return@launch }
+            val client = app.panel.client?.takeIf { app.panel.state.value == PanelState.ONLINE }
             val f = runCatching { app.updater.download(client) }.getOrElse { ctx.toast(it.message ?: "Ошибка загрузки"); return@launch }
             ready = f
             if (app.updater.needsInstallPermission()) {
@@ -65,7 +64,7 @@ fun UpdateBanner() {
     val install = rememberInstaller()
     SectionCard {
         Text("Доступно обновление ${r.versionName}", fontWeight = FontWeight.SemiBold, color = Pal.accent2)
-        Muted("Новая версия опубликована в вашей панели VPS Router вместе с её обновлением.")
+        Muted("Источник: ${st.source?.label ?: "—"}. Установленная версия — ${App.instance.updater.currentVersion}.")
         UpdateProgress(st.progress, st.error)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
             Button(enabled = st.progress == null, onClick = install) { Text("Обновить") }
@@ -90,7 +89,6 @@ fun UpdateSection() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val st by app.updater.state.collectAsState()
-    val panelState by app.panel.state.collectAsState()
     var checking by remember { mutableStateOf(false) }
     var scripts by remember { mutableStateOf(ScriptStore.source(ctx)) }
     val install = rememberInstaller()
@@ -101,21 +99,23 @@ fun UpdateSection() {
         st.panelVersion?.let { Row2("Версия панели", it) }
         Row2("Скрипты установки", scripts)
         when {
-            st.available != null -> Text("Доступна версия ${st.available!!.versionName}", color = Pal.ok, fontWeight = FontWeight.Medium)
-            st.checkedAt > 0 -> Muted("Установлена последняя версия из панели (проверено ${ago(st.checkedAt)})")
-            panelState == PanelState.NOT_CONFIGURED -> Muted("Обновления приходят из панели VPS Router — подключите её.")
-            else -> Muted("Проверка выполняется при подключении к панели.")
+            st.available != null -> Text("Доступна версия ${st.available!!.versionName} (${st.source?.label})", color = Pal.ok, fontWeight = FontWeight.Medium)
+            st.checkedAt > 0 -> Muted("Установлена последняя версия (проверено ${ago(st.checkedAt)})")
+            else -> Muted("Обновления приходят из GitHub и из панели VPS Router.")
         }
+        // Итог последней проверки по каждому источнику — видно, почему обновления нет.
+        st.notes.forEach { Muted(it) }
         UpdateProgress(st.progress, st.error)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
             if (st.available != null) Button(enabled = st.progress == null, onClick = install) { Text("Обновить") }
-            OutlinedButton(enabled = panelState == PanelState.ONLINE && !checking, onClick = {
+            OutlinedButton(enabled = !checking, onClick = {
                 scope.launch {
                     checking = true
-                    app.panel.checkApp()
+                    app.updater.checkAll(app.panel.client, app.panel.state.value == PanelState.ONLINE) { app.panel.checkApp(it) }
                     scripts = ScriptStore.source(ctx)
                     checking = false
-                    if (app.updater.state.value.available == null) ctx.toast("Обновлений нет")
+                    val a = app.updater.state.value.available
+                    ctx.toast(if (a != null) "Найдена версия ${a.versionName}" else "Обновлений нет — подробности под кнопкой")
                 }
             }) { Text(if (checking) "Проверка…" else "Проверить") }
             if (scripts != "встроенные в приложение") TextButton(onClick = { ScriptStore.reset(ctx); scripts = ScriptStore.source(ctx) }) { Text("Встроенные") }

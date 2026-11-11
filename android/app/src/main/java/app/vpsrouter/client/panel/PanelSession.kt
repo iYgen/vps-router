@@ -43,6 +43,10 @@ class PanelSession(private val repo: Repository) {
     /** Итог последнего импорта — для сообщения в UI. */
     private val _importResult = MutableStateFlow<String?>(null)
     val importResult: StateFlow<String?> = _importResult.asStateFlow()
+
+    /** Протоколы «этого устройства», которые не удалось добавить: формат → причина (для списка соединений). */
+    private val _formatIssues = MutableStateFlow<Map<String, String>>(emptyMap())
+    val formatIssues: StateFlow<Map<String, String>> = _formatIssues.asStateFlow()
     fun clearImportResult() { _importResult.value = null }
 
     /**
@@ -145,8 +149,10 @@ class PanelSession(private val repo: Repository) {
         if (pruneOthers) { pruneOthers = false; pruneOtherDevices(d.id) }
         val (ok, failed) = importDevice(d)
         _importResult.value = when {
+            failed > 0 && _formatIssues.value.values.any { it.startsWith("обновите панель") } ->
+                "Соединений добавлено: $ok. Для VLESS, Hysteria2, Trojan и Shadowsocks обновите панель до 1.3 или новее"
             failed > 0 -> "Соединений обновлено: $ok, с ошибкой: $failed (см. журнал)"
-            ok == 0 -> "У «${d.name}» нет AmneziaWG/WireGuard — включите протокол устройству в панели"
+            ok == 0 -> "У «${d.name}» нет подходящих протоколов — включите их устройству в панели"
             else -> _importResult.value
         }
     }
@@ -241,11 +247,19 @@ class PanelSession(private val repo: Repository) {
     /** Добавить все туннельные конфиги одного устройства. Возвращает (успешно, ошибок). */
     suspend fun importDevice(d: PanelDevice): Pair<Int, Int> {
         var ok = 0; var failed = 0
+        val issues = linkedMapOf<String, String>()
+        if (!d.revoked) d.formats.filterNot { PanelClient.isConnectable(it) }.forEach { issues[it] = "ядро sing-box этот протокол не поддерживает" }
         tunnelFormats(d).forEach { f ->
             try { importDeviceTunnel(d.id, d.name, f); ok++ } catch (e: Exception) {
                 failed++; AppLog.e("Импорт ${d.name} ($f): ${e.message}")
+                issues[f] = when {
+                    e is PanelException && e.code == 422 -> e.message?.take(120) ?: "протокол выключен в панели"
+                    e.message?.contains("обновите панель") == true -> "обновите панель до 1.3 или новее"
+                    else -> e.message?.take(120) ?: "ошибка"
+                }
             }
         }
+        if (repo.data.value.panel?.myDeviceId == d.id) _formatIssues.value = issues
         return ok to failed
     }
 
