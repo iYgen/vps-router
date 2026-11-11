@@ -16,6 +16,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -84,6 +85,7 @@ fun AppRoot(activity: MainActivity) {
 
     Scaffold(
         containerColor = Pal.bg,
+        topBar = { if (route in tabs.map { it.route }) BrandBar(nav) },
         bottomBar = {
             if (route in tabs.map { it.route }) {
                 NavigationBar(containerColor = Pal.surface) {
@@ -115,6 +117,7 @@ fun AppRoot(activity: MainActivity) {
             composable("settings") { SettingsScreen(nav) }
             composable("add") { AddScreen(nav) }
             composable("apps") { AppPickerScreen(nav) }
+            composable("apps/hidden") { AppPickerScreen(nav, hidden = true) }
             composable("diagnostics") { DiagnosticsScreen(nav) }
             composable("log") { LogScreen(nav) }
             composable("tunnel/{id}") { TunnelDetailScreen(it.arguments?.getString("id").orEmpty(), nav) }
@@ -124,6 +127,16 @@ fun AppRoot(activity: MainActivity) {
             composable("panel-relay") { PanelRelayWizard(nav) }
         }
     }
+
+    // После входа в панель (QR или пароль) — сразу на главную с нижним меню, без онбординга в истории.
+    val loggedIn by app.panel.justLoggedIn.collectAsState()
+    LaunchedEffect(loggedIn) {
+        if (!loggedIn) return@LaunchedEffect
+        app.panel.justLoggedIn.value = false
+        app.repo.update { it.copy(settings = it.settings.copy(onboarded = true)) }
+        nav.navigate("home") { popUpTo(0) { inclusive = true } }
+    }
+    DeviceChoiceDialog()
 
     // .conf, открытый из файлового менеджера/мессенджера
     val pending by activity.pendingImport

@@ -34,7 +34,7 @@ object ConfigTransform {
             if (section == "interface" && t.contains('=')) {
                 when (key(t)) {
                     "dns" -> if (s.dnsOverride.isNotBlank()) continue
-                    "excludedapplications", "includedapplications" -> if (s.routeMode != RouteMode.ALL) continue
+                    "excludedapplications", "includedapplications" -> if (s.routeMode != RouteMode.ALL || s.hiddenApps.isNotEmpty()) continue
                 }
             }
             if (section == "peer" && t.contains('=') && key(t) == "allowedips" && s.bypassLan) {
@@ -49,11 +49,9 @@ object ConfigTransform {
         if (section == "interface") interfaceEnd = out.size
         val extra = mutableListOf<String>()
         if (s.dnsOverride.isNotBlank()) extra += "DNS = ${s.dnsOverride.trim()}"
-        if (s.apps.isNotEmpty()) when (s.routeMode) {
-            RouteMode.EXCLUDE_APPS -> extra += "ExcludedApplications = ${s.apps.joinToString(", ")}"
-            RouteMode.ONLY_APPS -> extra += "IncludedApplications = ${s.apps.joinToString(", ")}"
-            RouteMode.ALL -> {}
-        }
+        val (included, excluded) = appLists(s)
+        if (included.isNotEmpty()) extra += "IncludedApplications = ${included.joinToString(", ")}"
+        else if (excluded.isNotEmpty()) extra += "ExcludedApplications = ${excluded.joinToString(", ")}"
         if (extra.isNotEmpty() && interfaceEnd >= 0) {
             // Вставляем в конец секции [Interface] (перед пустыми строками, отделяющими [Peer]).
             var at = interfaceEnd
@@ -61,6 +59,19 @@ object ConfigTransform {
             out.addAll(at, extra)
         }
         return out.joinToString("\n")
+    }
+
+    /**
+     * Итоговые списки (включённые, исключённые). Скрытые приложения исключаются всегда:
+     * при «Только выбранные» их просто нет среди включённых.
+     */
+    fun appLists(s: AppSettings): Pair<List<String>, List<String>> = when (s.routeMode) {
+        RouteMode.ONLY_APPS -> {
+            val inc = s.apps.filterNot { it in s.hiddenApps }
+            if (inc.isNotEmpty()) inc to emptyList() else emptyList<String>() to s.hiddenApps
+        }
+        RouteMode.EXCLUDE_APPS -> emptyList<String>() to (s.apps + s.hiddenApps).distinct()
+        RouteMode.ALL -> emptyList<String>() to s.hiddenApps
     }
 
     fun describe(s: AppSettings): String = buildString {
@@ -72,5 +83,6 @@ object ConfigTransform {
             }
         )
         if (s.bypassLan) append(" · без локальной сети")
+        if (s.hiddenApps.isNotEmpty()) append(" · VPN скрыт от ${s.hiddenApps.size} прил.")
     }
 }

@@ -12,6 +12,7 @@ use App\Models\Setting;
 use App\Singbox\DnsBuilder;
 use App\Singbox\ExitOutboundBuilder;
 use App\Singbox\InboundsBuilder;
+use App\Singbox\NoRfGuard;
 use App\Singbox\RouteBuilder;
 use App\Singbox\RuleSetRegistry;
 
@@ -63,6 +64,24 @@ class SingboxConfigBuilder
     public static function adblockEnabled(): bool
     {
         return self::setget('adblock_enabled', '0') === '1';
+    }
+
+    /** «Без российского IP» — по умолчанию включено (AI-сервисы банят за РФ-адрес). */
+    public static function noRfEnabled(): bool
+    {
+        return self::setget('no_rf_enabled', '1') === '1';
+    }
+
+    /** @return string[] домены «без РФ» (настройка или список по умолчанию) */
+    public static function noRfDomains(): array
+    {
+        return self::noRfDomainsFor(self::setget('no_rf_domains', null));
+    }
+
+    /** Для формы настроек: сохранённое значение или список по умолчанию. */
+    public static function noRfDomainsFor(?string $raw): array
+    {
+        return $raw === null ? NoRfGuard::DEFAULT_DOMAINS : NoRfGuard::parse($raw);
     }
 
     /** Блокировать QUIC (UDP 443) — по умолчанию да: убирает зависания YouTube через прокси. */
@@ -177,6 +196,11 @@ class SingboxConfigBuilder
         $registry = new RuleSetRegistry((string) App::config()['singbox_ruleset_dir']);
         $route = RouteBuilder::build($groups, $exitServers, $registry, self::domainsFirstEnabled());
         $routeRules = $route['rules'];
+
+        // «Без российского IP»: такие сайты не уходят напрямую с РФ-сервера (см. NoRfGuard).
+        if (self::noRfEnabled()) {
+            $routeRules = NoRfGuard::apply($routeRules, $groups, $exitServers, self::noRfDomains());
+        }
 
         // Inbound'ы устройств (VLESS/Reality + остальные протоколы).
         $in = InboundsBuilder::build($scopeId, $includeNull, [

@@ -75,7 +75,7 @@ fun PanelScreen(nav: NavController) {
     Column(Modifier.fillMaxSize()) {
     BackBar("VPS Router", nav)
     when (state) {
-        PanelState.NOT_CONFIGURED -> PanelLogin(null, error) { p, all -> scope.launch { app.panel.connect(p, importAll = all) } }
+        PanelState.NOT_CONFIGURED -> PanelLogin(null, error) { p -> scope.launch { app.panel.connect(p) } }
         PanelState.NEED_2FA -> TotpForm(error) { code -> scope.launch { app.panel.submitTotp(code) } }
         else -> Column(Modifier.fillMaxSize()) {
             PanelHeader(state, error, data.panel, onRetry = { scope.launch { app.panel.connect() } }, onForget = { app.panel.forget() })
@@ -86,21 +86,21 @@ fun PanelScreen(nav: NavController) {
 }
 
 @Composable
-private fun PanelLogin(initial: PanelProfile?, error: String?, onConnect: (PanelProfile, Boolean) -> Unit) {
+private fun PanelLogin(initial: PanelProfile?, error: String?, onConnect: (PanelProfile) -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var url by remember { mutableStateOf(initial?.url ?: "") }
     var alt by remember { mutableStateOf(initial?.altUrls?.joinToString("\n") ?: "") }
     var user by remember { mutableStateOf(initial?.username ?: "admin") }
     var pass by remember { mutableStateOf("") }
     var insecure by remember { mutableStateOf(initial?.insecureTls ?: false) }
-    var importAll by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     val state by App.instance.panel.state.collectAsState()
     if (state != PanelState.CONNECTING) busy = false
 
     fun submit() {
         busy = true
-        onConnect(PanelProfile(url.trim(), alt.lines().map { it.trim() }.filter { it.isNotEmpty() }, user.trim(), pass, insecure), importAll)
+        onConnect(PanelProfile(url.trim(), alt.lines().map { it.trim() }.filter { it.isNotEmpty() }, user.trim(), pass, insecure))
     }
 
     // QR панели: из приложения на другом телефоне (vpsrouter://panel?…) или просто адрес панели.
@@ -109,7 +109,7 @@ private fun PanelLogin(initial: PanelProfile?, error: String?, onConnect: (Panel
         p.user?.let { user = it }
         if (p.alt.isNotEmpty()) alt = p.alt.joinToString("\n")
         insecure = p.insecure || (p.url.startsWith("https://") && Regex("""https://[\d.]+""").containsMatchIn(p.url))
-        if (p.password != null) { pass = p.password; submit() }
+        if (p.code != null) { busy = true; scope.launch { App.instance.panel.pairAndConnect(p) } }
         else ctx.toast("Адрес панели получен — введите пароль")
     }
     val prefill by App.instance.panel.prefill.collectAsState()
@@ -136,7 +136,7 @@ private fun PanelLogin(initial: PanelProfile?, error: String?, onConnect: (Panel
             ) {
                 Icon(Icons.Filled.QrCodeScanner, null); Spacer(Modifier.width(8.dp)); Text("Сканировать QR панели")
             }
-            Muted("QR можно показать в этом приложении на другом телефоне (Панель → «QR для другого устройства») или закодировать в него адрес панели.", Modifier.padding(top = 4.dp))
+            Muted("QR входа — в панели на странице «Приложение» или в этом приложении на другом телефоне (Панель → «QR для другого телефона»). Пароль вводить не нужно, сразу подтянутся соединения этого телефона.", Modifier.padding(top = 4.dp))
         }
         item {
             SectionCard {
@@ -148,10 +148,6 @@ private fun PanelLogin(initial: PanelProfile?, error: String?, onConnect: (Panel
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(insecure, { insecure = it })
                     Muted("Доверять самоподписанному сертификату (панель по IP)")
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(importAll, { importAll = it })
-                    Muted("Сразу добавить в туннели конфиги всех устройств (AmneziaWG / WireGuard)")
                 }
                 error?.let { Text(it, color = Pal.danger, fontSize = 13.sp) }
                 Spacer(Modifier.height(8.dp))
@@ -197,7 +193,7 @@ private fun PanelHeader(state: PanelState, error: String?, p: PanelProfile?, onR
         }
         Muted(App.instance.panel.activeUrl ?: p?.url.orEmpty())
         if (p != null) TextButton(onClick = { shareAsk = true }, contentPadding = PaddingValues(0.dp)) {
-            Icon(Icons.Filled.QrCode, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("QR для другого устройства")
+            Icon(Icons.Filled.QrCode, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("QR для другого телефона")
         }
         if (state == PanelState.OFFLINE) {
             Spacer(Modifier.height(8.dp))
@@ -214,14 +210,16 @@ private fun PanelHeader(state: PanelState, error: String?, p: PanelProfile?, onR
             Text(error, color = Pal.danger, fontSize = 13.sp)
         }
     }
-    if (shareAsk && p != null) AlertDialog(
-        onDismissRequest = { shareAsk = false },
-        title = { Text("QR подключения панели") },
-        text = { Muted("Отсканируйте его в VPS Router на другом телефоне: адрес, запасные адреса и логин заполнятся сами, а после входа подтянутся все конфиги. Пароль лучше ввести вручную — QR с паролем даёт полный доступ к панели любому, кто его увидит.") },
-        confirmButton = { TextButton(onClick = { shareAsk = false; shareQr = PanelLink.encode(p, withPassword = false) }) { Text("Без пароля") } },
-        dismissButton = { TextButton(onClick = { shareAsk = false; shareQr = PanelLink.encode(p, withPassword = true) }) { Text("С паролем", color = Pal.warn) } },
-    )
-    shareQr?.let { QrDialog("Панель VPS Router", it) { shareQr = null } }
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    LaunchedEffect(shareAsk) {
+        if (!shareAsk || p == null) return@LaunchedEffect
+        shareAsk = false
+        // Одноразовый код (10 мин) от панели: другой телефон войдёт без пароля.
+        try { shareQr = App.instance.panel.client?.pairLink(p.altUrls, p.insecureTls) ?: throw Exception("Панель не подключена") }
+        catch (e: Exception) { ctx.toast(e.message ?: "Ошибка") }
+    }
+    shareQr?.let { QrDialog("Вход в панель · 10 минут, один раз", it) { shareQr = null } }
     if (confirmForget) ConfirmDialog("Выйти из панели?", "Логин, пароль и кэш панели будут удалены с телефона. Туннели останутся.", "Выйти", onForget) { confirmForget = false }
 }
 
@@ -265,14 +263,6 @@ private fun DevicesTab(online: Boolean) {
                 Button(enabled = online, onClick = { create = true }) { Text("+ Устройство") }
                 OutlinedButton(enabled = online, onClick = { act("Обновление…") { app.panel.refresh() } }) { Text("Обновить") }
                 OutlinedButton(enabled = online, onClick = { act("Применение конфигурации…") { ctx.toast(app.panel.client!!.apply()) } }) { Text("Применить") }
-                if (data.panelCache.devices.any { app.panel.tunnelFormats(it).isNotEmpty() }) {
-                    OutlinedButton(enabled = online, onClick = {
-                        act("Импорт конфигов всех устройств…") {
-                            val (ok, failed) = app.panel.importAll()
-                            ctx.toast("Добавлено/обновлено туннелей: $ok" + if (failed > 0) ", ошибок: $failed" else "")
-                        }
-                    }) { Text("Все в туннели") }
-                }
             }
             busy?.let { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.height(16.dp).width(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Muted(it) } }
         }
@@ -281,12 +271,16 @@ private fun DevicesTab(online: Boolean) {
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(d.name, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    if (d.id == data.panel?.myDeviceId) { StatusPill("этот телефон", Pal.accent); Spacer(Modifier.width(6.dp)) }
                     when {
                         d.revoked -> StatusPill("отозвано", Pal.danger)
                         d.online -> StatusPill("онлайн", Pal.ok)
                         else -> StatusPill("офлайн", Pal.muted)
                     }
                 }
+                if (d.id != data.panel?.myDeviceId && !d.revoked) TextButton(enabled = online, contentPadding = PaddingValues(0.dp), onClick = {
+                    act("Привязка…") { app.panel.chooseDevice(d.id); ctx.toast("«${d.name}» — теперь этот телефон") }
+                }) { Text("Это мой телефон", fontSize = 13.sp) }
                 Spacer(Modifier.height(6.dp))
                 if (d.formats.isEmpty() && !d.revoked) Muted("Нет включённых протоколов")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -117,9 +117,14 @@ data class PanelProfile(
     /** Запасные адреса панели (напр. через ретранслятор) — пробуются по очереди. */
     val altUrls: List<String> = emptyList(),
     val username: String,
-    val password: String,
+    /** Пусто, если приложение привязано по QR (вход по [appToken]). */
+    val password: String = "",
     /** Разрешить самоподписанные/не совпадающие по имени сертификаты (панель по IP). */
     val insecureTls: Boolean = false,
+    /** Ключ доступа приложения, выданный панелью по одноразовому коду из QR (можно отозвать в панели). */
+    val appToken: String? = null,
+    /** Каким устройством панели является этот телефон — его соединения показываются в приложении. */
+    val myDeviceId: Int? = null,
 )
 
 /** Режим маршрутизации на устройстве (применяется к любому туннелю при подключении). */
@@ -137,6 +142,11 @@ data class AppSettings(
     val bypassLan: Boolean = false,
     /** Свои DNS вместо указанных в конфиге (пусто — из конфига). */
     val dnsOverride: String = "",
+    /**
+     * «Скрыть VPN от приложений»: эти приложения всегда идут мимо туннеля, при любом профиле.
+     * Для них сеть по умолчанию — обычная (без признака VPN), а адрес — домашний.
+     */
+    val hiddenApps: List<String> = emptyList(),
 )
 
 /** Маршрут (группа правил) панели VPS Router: что и через какой выход идёт на сервере. */
@@ -202,4 +212,9 @@ data class AppData(
     val panelCache: PanelCache = PanelCache(),
     val lastTunnelId: String? = null,
     val settings: AppSettings = AppSettings(),
+    /** Трафик по соединениям, посчитанный на телефоне: id туннеля → итоги. */
+    val traffic: Map<String, ConnTraffic> = emptyMap(),
 )
+
+@Serializable
+data class ConnTraffic(val rx: Long = 0, val tx: Long = 0, val lastUsed: Long = 0)

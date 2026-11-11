@@ -7,6 +7,7 @@ import androidx.compose.ui.test.performClick
 import app.vpsrouter.client.awg.AwgFactory
 import app.vpsrouter.client.data.AppData
 import app.vpsrouter.client.data.AppSettings
+import app.vpsrouter.client.data.ConnTraffic
 import app.vpsrouter.client.data.PanelRoute
 import app.vpsrouter.client.data.RouteMode
 import app.vpsrouter.client.data.ManagedServer
@@ -57,11 +58,17 @@ class SeededApp : App() {
             privateKey = "-", relay = RelayState("203.0.113.10", "Амстердам", "srv1", listOf(PortSpec(47321, "udp"))))
         val direct = TunnelProfile(id = "t1", name = "Амстердам · Pixel 8", config = AwgFactory.clientConfig(awg, p1, nl.host), source = "local", origin = "srv1/${p1.id}")
         val viaRelay = direct.copy(id = "t2", name = "Амстердам · Pixel 8 ⇢ Белый IP (Москва)", config = AwgFactory.withEndpointHost(direct.config, relay.host), via = relay.name)
-        val fromPanel = TunnelProfile(id = "t3", name = "Мой телефон (панель)", config = AwgFactory.clientConfig(awg, p2, "panel.example.com"), source = "panel", origin = "panel:4:amneziawg")
+        val fromPanel = TunnelProfile(id = "t3", name = "Мой телефон", config = AwgFactory.clientConfig(awg, p2, "panel.example.com"), source = "panel", origin = "panel:4:amneziawg")
+        val panelRelay = fromPanel.copy(id = "t4", name = "Мой телефон ⇢ relay-1", origin = "panel:4:amneziawg@5", via = "relay-1")
         val data = AppData(
-            tunnels = listOf(direct, viaRelay, fromPanel),
+            tunnels = listOf(direct, viaRelay, fromPanel, panelRelay),
+            traffic = mapOf(
+                "t3" to ConnTraffic(rx = 3_400_000_000, tx = 420_000_000, lastUsed = System.currentTimeMillis() - 5 * 3600_000),
+                "t4" to ConnTraffic(rx = 810_000_000, tx = 95_000_000, lastUsed = System.currentTimeMillis() - 26 * 3600_000),
+                "t1" to ConnTraffic(rx = 1_200_000_000, tx = 160_000_000, lastUsed = System.currentTimeMillis() - 600_000),
+            ),
             servers = listOf(nl, relay),
-            panel = PanelProfile("http://127.0.0.1:9", listOf("http://127.0.0.1:10"), "admin", "x"),
+            panel = PanelProfile("http://127.0.0.1:9", listOf("http://127.0.0.1:10"), "admin", appToken = "test-token", myDeviceId = 4),
             panelCache = PanelCache(
                 fetchedAt = System.currentTimeMillis() - 3 * 3600_000,
                 servers = listOf(
@@ -82,7 +89,7 @@ class SeededApp : App() {
                 ),
             ),
             lastTunnelId = "t1",
-            settings = AppSettings(onboarded = true, routeMode = RouteMode.EXCLUDE_APPS, apps = listOf("ru.sberbankmobile", "ru.gosuslugi"), bypassLan = true),
+            settings = AppSettings(onboarded = true, routeMode = RouteMode.EXCLUDE_APPS, apps = listOf("com.example.torrent"), bypassLan = true, hiddenApps = listOf("ru.sberbankmobile", "ru.gosuslugi")),
         )
         return MemoryStore(this, Json { encodeDefaults = true }.encodeToString(AppData.serializer(), data))
     }
@@ -108,6 +115,11 @@ class SeededScreenshotTest {
         rule.shot("01_home")
         rule.clickLast("Связи")
         rule.shot("05_links")
+    }
+
+    @Test fun picker() {
+        rule.click("Соединение")
+        rule.shot("04_connection_picker")
     }
 
     @Test fun servers() {

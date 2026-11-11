@@ -222,6 +222,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             AuditLog::record('settings.adblock', 'adblock=' . (!empty($_POST['adblock_enabled']) ? '1' : '0') . ' quic=' . (!empty($_POST['block_quic']) ? '1' : '0') . ' dns=' . (!empty($_POST['smart_dns']) ? '1' : '0') . ' domfirst=' . (!empty($_POST['route_domains_first']) ? '1' : '0') . ' listfetch=' . (!empty($_POST['list_fetch_via_exit']) ? '1' : '0') . " (router=$routerId)");
             $result = (new Applier())->apply(Auth::username() ?? 'system', 'блокировка рекламы/QUIC/умный DNS', $routerId);
             View::applyResultFlash($result);
+        } elseif ($action === 'save_norf') {
+            $sset('no_rf_enabled', !empty($_POST['no_rf_enabled']) ? '1' : '0');
+            $domains = \App\Singbox\NoRfGuard::parse((string) ($_POST['no_rf_domains'] ?? ''));
+            $sset('no_rf_domains', implode("\n", $domains));
+            AuditLog::record('settings.norf', 'on=' . (!empty($_POST['no_rf_enabled']) ? '1' : '0') . ' domains=' . count($domains) . " (router=$routerId)");
+            $result = (new Applier())->apply(Auth::username() ?? 'system', 'сайты без российского IP', $routerId);
+            View::applyResultFlash($result);
         } elseif ($action === 'save_privacy') {
             $on = !empty($_POST['external_checks_enabled']);
             Setting::set('external_checks_enabled', $on ? '1' : '0');

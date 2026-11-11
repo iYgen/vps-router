@@ -124,6 +124,18 @@ fun RoutesScreen(nav: NavController) {
         }
 
         item {
+            SectionCard {
+                Text("Скрыть VPN от приложений", fontWeight = FontWeight.SemiBold)
+                Muted("Приложения вроде МЭШ, банков и Госуслуг проверяют, включён ли VPN. Отмеченные здесь всегда идут мимо туннеля: для них в телефоне нет признака VPN, и они видят ваш обычный (домашний) адрес. Остальные приложения работают через VPN как обычно.")
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(onClick = { nav.navigate("apps/hidden") }) {
+                    Text(if (s.hiddenApps.isEmpty()) "Выбрать приложения" else "Скрыто от приложений: ${s.hiddenApps.size}")
+                }
+                Muted("Полностью спрятать VPN без root нельзя: Android всегда помечает VPN-сеть, и приложение, которое само идёт через VPN, это видит. Поэтому такие приложения выводятся из туннеля.", Modifier.padding(top = 6.dp))
+            }
+        }
+
+        item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Маршруты VPS Router", fontWeight = FontWeight.SemiBold, fontSize = 17.sp, modifier = Modifier.weight(1f))
                 when (panelState) {
@@ -204,14 +216,14 @@ private data class AppInfo(val pkg: String, val label: String, val icon: Drawabl
 
 /** Выбор приложений для профилей «Всё, кроме…» / «Только…». */
 @Composable
-fun AppPickerScreen(nav: NavController) {
+fun AppPickerScreen(nav: NavController, hidden: Boolean = false) {
     val app = App.instance
     val ctx = LocalContext.current
     val data by app.repo.data.collectAsState()
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<AppInfo>?>(null) }
     var query by remember { mutableStateOf("") }
-    var selected by remember { mutableStateOf(data.settings.apps.toSet()) }
+    var selected by remember { mutableStateOf((if (hidden) data.settings.hiddenApps else data.settings.apps).toSet()) }
 
     LaunchedEffect(Unit) {
         apps = withContext(Dispatchers.IO) {
@@ -226,9 +238,9 @@ fun AppPickerScreen(nav: NavController) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        BackBar(if (data.settings.routeMode == RouteMode.ONLY_APPS) "Только через VPN" else "Мимо VPN", nav) {
+        BackBar(if (hidden) "Скрыть VPN от" else if (data.settings.routeMode == RouteMode.ONLY_APPS) "Только через VPN" else "Мимо VPN", nav) {
             TextButton(onClick = {
-                scope.launch { applySettings { it.copy(apps = selected.sorted()) } }
+                scope.launch { applySettings { if (hidden) it.copy(hiddenApps = selected.sorted()) else it.copy(apps = selected.sorted()) } }
                 nav.popBackStack()
             }) { Text("Готово (${selected.size})") }
         }
@@ -237,8 +249,12 @@ fun AppPickerScreen(nav: NavController) {
         if (list == null) Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         else {
             val q = query.trim().lowercase()
+            val suggested = if (hidden) list.filter { RuApps.isLikely(it.pkg, it.label) }.map { it.pkg }.toSet() else emptySet()
             val shown = list.filter { q.isEmpty() || it.label.lowercase().contains(q) || it.pkg.contains(q) }
-                .sortedByDescending { it.pkg in selected }
+                .sortedWith(compareByDescending<AppInfo> { it.pkg in selected }.thenByDescending { it.pkg in suggested })
+            if (hidden && suggested.any { it !in selected }) TextButton(onClick = { selected = selected + suggested }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                Text("Отметить российские приложения (${suggested.count { it !in selected }})")
+            }
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                 if (shown.isEmpty()) item { Muted("Ничего не найдено", Modifier.padding(16.dp)) }
                 items(shown, key = { it.pkg }) { a ->
@@ -252,7 +268,7 @@ fun AppPickerScreen(nav: NavController) {
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(a.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(a.pkg, fontSize = 11.sp, color = Pal.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(if (a.pkg in suggested) "${a.pkg} · обычно проверяет VPN" else a.pkg, fontSize = 11.sp, color = if (a.pkg in suggested) Pal.warn else Pal.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Checkbox(on, { selected = if (on) selected - a.pkg else selected + a.pkg })
                     }

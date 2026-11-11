@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -104,20 +105,6 @@ fun HomeScreen(nav: NavController) {
     val current = data.tunnels.firstOrNull { it.id == (st.activeId ?: data.lastTunnelId) } ?: data.tunnels.firstOrNull()
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Logo()
-            Spacer(Modifier.width(10.dp))
-            Text("VPS Router", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Меню") }
-                DropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem(text = { Text("Панель VPS Router") }, onClick = { menu = false; nav.navigate("panel") })
-                    DropdownMenuItem(text = { Text("Проверить соединение") }, onClick = { menu = false; nav.navigate("diagnostics") })
-                    DropdownMenuItem(text = { Text("Журнал") }, onClick = { menu = false; nav.navigate("log") })
-                }
-            }
-        }
-
         if (current == null) {
             Spacer(Modifier.height(24.dp))
             Text("Нет подключений", fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -165,7 +152,7 @@ fun HomeScreen(nav: NavController) {
         }
 
         Spacer(Modifier.height(16.dp))
-        InfoRow(Icons.Filled.Dns, "Сервер", current.name, tunnelSubtitle(current)) { picker = true }
+        InfoRow(Icons.Filled.Dns, "Соединение", connTitle(current), tunnelSubtitle(current)) { picker = true }
         Spacer(Modifier.height(8.dp))
         InfoRow(Icons.AutoMirrored.Filled.CallSplit, "Маршрутизация", ConfigTransform.describe(data.settings), "Профиль и маршруты") { nav.navigate("routes") }
         Spacer(Modifier.height(8.dp))
@@ -179,9 +166,14 @@ fun HomeScreen(nav: NavController) {
     }
 
     if (picker) ModalBottomSheet(onDismissRequest = { picker = false }, containerColor = Pal.surface) {
-        Text("Выбор сервера", fontWeight = FontWeight.SemiBold, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        Text("Тип соединения", fontWeight = FontWeight.SemiBold, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 20.dp))
         LazyColumn(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            items(data.tunnels, key = { it.id }) { t ->
+          connectionGroups(data).forEach { g ->
+            item(key = "h:" + g.key) {
+                Text(g.title, color = Pal.accent2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 2.dp))
+            }
+            items(g.items, key = { it.id }) { t ->
                 val sel = t.id == current?.id
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable {
@@ -192,12 +184,14 @@ fun HomeScreen(nav: NavController) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(t.name, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Muted(tunnelSubtitle(t))
+                        Text(connKind(t), fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (g.key == "import") Muted(t.name)
                     }
                     if (sel) Icon(Icons.Filled.Check, null, tint = Pal.accent)
+                    IconButton(onClick = { picker = false; nav.navigate("tunnel/${t.id}") }) { Icon(Icons.Filled.Info, "Подробнее", tint = Pal.muted) }
                 }
             }
+          }
             item {
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { picker = false; nav.navigate("add") }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.AddCircleOutline, null, tint = Pal.accent); Spacer(Modifier.width(10.dp)); Text("Добавить сервер", color = Pal.accent)

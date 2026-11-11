@@ -1,26 +1,23 @@
 package app.vpsrouter.client.panel
 
 import android.net.Uri
-import app.vpsrouter.client.data.PanelProfile
 
 /**
- * Ссылка подключения панели для QR-кода:
- *   vpsrouter://panel?url=https://p.example.com&user=admin[&alt=...&alt=...][&insecure=1][&pass=...]
- * Пароль кладётся только если пользователь явно согласился. Также принимается просто адрес
- * панели (https://… или http://IP) — тогда остальные поля заполняются вручную.
+ * Ссылка подключения панели из QR:
+ *   vpsrouter://panel?url=https://p.example.com&user=admin&code=<одноразовый код>[&device=12][&alt=…][&insecure=1]
+ * Код выдаёт панель (страница «Приложение» или «QR для другого устройства» в приложении):
+ * приложение обменивает его на собственный ключ доступа — пароль не нужен.
+ * Без кода (или голый адрес панели) — форма входа с подставленным адресом.
  */
 object PanelLink {
-    data class Parsed(val url: String, val user: String?, val alt: List<String>, val insecure: Boolean, val password: String?)
-
-    fun encode(p: PanelProfile, withPassword: Boolean): String {
-        val b = Uri.Builder().scheme("vpsrouter").authority("panel")
-            .appendQueryParameter("url", p.url)
-            .appendQueryParameter("user", p.username)
-        p.altUrls.forEach { b.appendQueryParameter("alt", it) }
-        if (p.insecureTls) b.appendQueryParameter("insecure", "1")
-        if (withPassword) b.appendQueryParameter("pass", p.password)
-        return b.build().toString()
-    }
+    data class Parsed(
+        val url: String,
+        val user: String?,
+        val alt: List<String>,
+        val insecure: Boolean,
+        val code: String? = null,
+        val device: Int? = null,
+    )
 
     fun parse(text: String?): Parsed? {
         val t = text?.trim() ?: return null
@@ -32,12 +29,13 @@ object PanelLink {
                 user = u.getQueryParameter("user"),
                 alt = u.getQueryParameters("alt").filter { it.isNotBlank() },
                 insecure = u.getQueryParameter("insecure") == "1",
-                password = u.getQueryParameter("pass"),
+                code = u.getQueryParameter("code")?.takeIf { it.isNotBlank() },
+                device = u.getQueryParameter("device")?.toIntOrNull(),
             )
         }
         // Голый адрес панели (одна строка, http/https, без конфигов туннеля)
         if (Regex("""^https?://[^\s/]+(/[^\s]*)?$""", RegexOption.IGNORE_CASE).matches(t)) {
-            return Parsed(t, null, emptyList(), false, null)
+            return Parsed(t, null, emptyList(), false)
         }
         return null
     }

@@ -51,6 +51,23 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
     val status: StateFlow<TunnelStatus> = _status.asStateFlow()
     private var statsJob: Job? = null
 
+    // Сколько трафика текущего туннеля уже записано в AppData.traffic (счётчики backend'а растут с нуля).
+    private var savedRx = 0L
+    private var savedTx = 0L
+
+    /** Дописать прирост трафика соединения в постоянную статистику (вкладка «Связи»). */
+    private fun flushTraffic() {
+        val s = _status.value
+        val id = s.activeId ?: return
+        val dRx = s.rx - savedRx; val dTx = s.tx - savedTx
+        if (dRx <= 0 && dTx <= 0) return
+        savedRx = s.rx; savedTx = s.tx
+        repo.update { d ->
+            val old = d.traffic[id] ?: app.vpsrouter.client.data.ConnTraffic()
+            d.copy(traffic = d.traffic + (id to old.copy(rx = old.rx + maxOf(0, dRx), tx = old.tx + maxOf(0, dTx), lastUsed = System.currentTimeMillis())))
+        }
+    }
+
     private inner class AppTunnel(val profileId: String) : Tunnel {
         override fun getName() = "vpsr"
         override fun onStateChange(newState: Tunnel.State) {
@@ -58,7 +75,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                 state = newState,
                 activeId = if (newState == Tunnel.State.UP) profileId else _status.value.activeId,
             )
-            if (newState == Tunnel.State.DOWN) statsJob?.cancel()
+            if (newState == Tunnel.State.DOWN) { statsJob?.cancel(); flushTraffic() }
         }
     }
 
@@ -76,6 +93,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
             try {
                 val settings = repo.data.value.settings
                 val cfg = parseConfig(ConfigTransform.apply(profile.config, settings))
+                flushTraffic(); savedRx = 0; savedTx = 0
                 current?.let { if (it.profileId != profile.id) backend.setState(it, Tunnel.State.DOWN, null) }
                 val t = AppTunnel(profile.id)
                 current = t
@@ -94,6 +112,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
     suspend fun stop() = withContext(Dispatchers.IO) {
         mutex.withLock {
             val t = current ?: return@withLock
+            flushTraffic(); savedRx = 0; savedTx = 0
             try {
                 backend.setState(t, Tunnel.State.DOWN, null)
             } catch (e: Exception) {
@@ -113,6 +132,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
     private fun startStats(t: AppTunnel) {
         statsJob?.cancel()
         statsJob = scope.launch {
+            var tick = 0
             while (isActive) {
                 runCatching {
                     val st = backend.getStatistics(t)
@@ -127,6 +147,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                         rxRate = if (prev.rx in 1..rx) rx - prev.rx else 0,
                         txRate = if (prev.tx in 1..tx) tx - prev.tx else 0,
                     )
+                    if (++tick % 15 == 0) flushTraffic()
                 }
                 delay(1000)
             }

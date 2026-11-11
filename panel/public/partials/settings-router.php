@@ -154,3 +154,21 @@ use App\RiskScanner;
     <button type="submit" style="margin-top:10px"><?= htmlspecialchars(t('common.save_apply')) ?></button>
   </form>
 </div>
+
+<div class="card">
+  <h2 style="margin-top:0"><?= htmlspecialchars(t('settings.norf.title')) ?></h2>
+  <p class="muted"><?= htmlspecialchars(t('settings.norf.desc')) ?></p>
+  <form method="post">
+    <?= Auth::csrfField() ?>
+    <input type="hidden" name="action" value="save_norf">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:500">
+      <input type="checkbox" name="no_rf_enabled" value="1" <?= ($settings['no_rf_enabled'] ?? '1') === '1' ? 'checked' : '' ?>>
+      <?= htmlspecialchars(t('settings.norf.toggle')) ?>
+    </label>
+    <label style="display:block;margin-top:10px"><?= htmlspecialchars(t('settings.norf.list')) ?><br>
+      <textarea name="no_rf_domains" rows="8" style="width:100%;max-width:520px;font-family:monospace"><?= htmlspecialchars(implode("\n", \App\SingboxConfigBuilder::noRfDomainsFor($settings['no_rf_domains'] ?? null))) ?></textarea>
+    </label>
+    <p class="muted" style="margin:6px 0 0"><?= htmlspecialchars(t('settings.norf.note')) ?></p>
+    <button type="submit" style="margin-top:10px"><?= htmlspecialchars(t('common.save_apply')) ?></button>
+  </form>
+</div>

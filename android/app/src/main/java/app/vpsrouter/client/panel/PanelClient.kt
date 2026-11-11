@@ -100,6 +100,16 @@ class PanelClient(private val profile: PanelProfile) {
     /** Вход. Бросает [TwoFactorRequired], если нужен код — затем вызвать [submitTotp]. */
     suspend fun login() = withContext(Dispatchers.IO) {
         pickReachable() ?: throw PanelException("Панель недоступна ни по одному адресу")
+        if (profile.appToken != null) {
+            // Привязано по QR: сессия по ключу приложения, без пароля и 2FA.
+            val body = buildJsonObject {
+                put("token", profile.appToken)
+                profile.myDeviceId?.let { put("client_id", it) }
+            }
+            val r = api("POST", "/api/app-auth.php?action=session", body).jsonObject
+            csrf = r["csrf"]?.jsonPrimitive?.contentOrNull ?: throw PanelException("Панель не выдала CSRF-токен")
+            return@withContext
+        }
         val page = get("/login.php")
         page.use {
             val loc = it.header("Location").orEmpty()
@@ -109,6 +119,15 @@ class PanelClient(private val profile: PanelProfile) {
         val token = formToken(getText("/login.php"))
         val resp = post("/login.php", FormBody.Builder().add("csrf_token", token).add("username", profile.username).add("password", profile.password).build())
         handleLoginResponse(resp)
+    }
+
+    /** Запомнить в панели, какое устройство — этот телефон (у ключа приложения). Обновляет сессию. */
+    suspend fun bindDevice(p: PanelProfile) = withContext(Dispatchers.IO) {
+        val token = p.appToken ?: return@withContext
+        val r = api("POST", "/api/app-auth.php?action=session", buildJsonObject {
+            put("token", token); put("client_id", p.myDeviceId)
+        }).jsonObject
+        r["csrf"]?.jsonPrimitive?.contentOrNull?.let { csrf = it }
     }
 
     suspend fun submitTotp(code: String) = withContext(Dispatchers.IO) {
@@ -320,6 +339,51 @@ class PanelClient(private val profile: PanelProfile) {
         if (code == 0) "Конфигурация применена" else "Apply завершился с кодом ${code ?: "?"}: ${r?.str("output")?.takeLast(500).orEmpty()}"
     }
 
+    // ------------------------------------------------------------------ привязка по QR
+
+    data class Pairing(val token: String, val username: String, val clientId: Int?)
+
+    /** Обменять одноразовый код из QR на ключ доступа приложения. */
+    suspend fun pair(code: String, deviceName: String): Pairing = withContext(Dispatchers.IO) {
+        pickReachable() ?: throw PanelException("Панель недоступна ни по одному адресу")
+        val r = api("POST", "/api/app-auth.php?action=pair", buildJsonObject { put("code", code); put("name", deviceName) }).jsonObject
+        Pairing(
+            token = r["token"]?.jsonPrimitive?.contentOrNull ?: throw PanelException("Панель не выдала ключ доступа"),
+            username = r["username"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            clientId = r["client_id"]?.jsonPrimitive?.intOrNull,
+        )
+    }
+
+    /** Ссылка для QR другого телефона (одноразовый код, выдаёт панель). */
+    suspend fun pairLink(alt: List<String>, insecure: Boolean): String = withContext(Dispatchers.IO) {
+        val body = buildJsonObject {
+            put("alt", JsonArray(alt.map { JsonPrimitive(it) }))
+            put("insecure", insecure)
+        }
+        api("POST", "/api/app.php?action=pair", body).jsonObject["link"]?.jsonPrimitive?.contentOrNull
+            ?: throw PanelException("Панель не выдала код — обновите панель до 1.2")
+    }
+
+    /** Куда уходит трафик устройства: по выходам и топ сайтов (за [minutes]). */
+    suspend fun deviceTraffic(clientId: Int, minutes: Int = 1440): DeviceTraffic = withContext(Dispatchers.IO) {
+        val o = api("GET", "/api/app.php?action=traffic&client_id=$clientId&minutes=$minutes").jsonObject
+        fun l(e: JsonElement?) = e?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
+        val totals = o["totals"] as? JsonObject
+        DeviceTraffic(
+            found = o["found"]?.jsonPrimitive?.booleanOrNull ?: false,
+            online = o["online"]?.jsonPrimitive?.booleanOrNull ?: false,
+            up = l(o["up"]), down = l(o["down"]),
+            todayUp = l(totals?.get("today_up")), todayDown = l(totals?.get("today_down")),
+            d30Up = l(totals?.get("d30_up")), d30Down = l(totals?.get("d30_down")),
+            byExit = (o["by_outbound"] as? JsonArray).orEmpty().map { it.jsonObject }.map {
+                TrafficItem(it["label"]?.jsonPrimitive?.contentOrNull.orEmpty(), null, l(it["up"]), l(it["down"]), it["tag"]?.jsonPrimitive?.contentOrNull)
+            },
+            hosts = (o["hosts"] as? JsonArray).orEmpty().map { it.jsonObject }.map {
+                TrafficItem(it["host"]?.jsonPrimitive?.contentOrNull.orEmpty(), it["label"]?.jsonPrimitive?.contentOrNull, l(it["up"]), l(it["down"]), it["tag"]?.jsonPrimitive?.contentOrNull)
+            },
+        )
+    }
+
     // ------------------------------------------------------------------ приложение (api/app.php)
 
     /** Что панель раздаёт для Android-приложения: APK, версия панели, хэши скриптов установки. */
@@ -396,3 +460,14 @@ class PanelClient(private val profile: PanelProfile) {
 data class AppRelease(val versionCode: Int, val versionName: String, val size: Long, val sha256: String, val minSdk: Int)
 
 data class PanelAppInfo(val release: AppRelease?, val panelVersion: String?, val scripts: Map<String, String>)
+
+data class TrafficItem(val name: String, val via: String?, val up: Long, val down: Long, val tag: String? = null) {
+    /** Выход прямо с РФ-сервера (сайт видит российский IP). */
+    val direct: Boolean get() = tag == "direct-rf" || tag == "direct"
+}
+
+data class DeviceTraffic(
+    val found: Boolean, val online: Boolean, val up: Long, val down: Long,
+    val todayUp: Long, val todayDown: Long, val d30Up: Long, val d30Down: Long,
+    val byExit: List<TrafficItem>, val hosts: List<TrafficItem>,
+)

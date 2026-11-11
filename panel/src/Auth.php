@@ -61,6 +61,44 @@ class Auth
         return true;
     }
 
+    /**
+     * Сессия для Android-приложения по токену привязки (App\AppPairing). Пароль и 2FA
+     * уже были пройдены в браузере, когда показывали QR, — здесь их не спрашиваем.
+     */
+    public static function loginAsApp(int $userId, string $detail): bool
+    {
+        $ip = self::clientIp();
+        if (self::isIpBlocked($ip)) {
+            return false;
+        }
+        $stmt = Database::get()->prepare('SELECT * FROM users WHERE id = ?');
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
+        if (!$user) {
+            return false;
+        }
+        unset($_SESSION['pending_2fa']);
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['username'] = $user['username'];
+        AuditLog::recordAuth($user['username'], 'login_success', $ip, $detail);
+        return true;
+    }
+
+    /** Неверный код/токен приложения — считаем как неудачный вход (общий лимит по IP). */
+    public static function appAuthFailed(string $detail): void
+    {
+        $ip = self::clientIp();
+        usleep(random_int(200000, 400000));
+        AuditLog::recordAuth('app', 'login_failed', $ip, $detail);
+        self::registerFailureAndMaybeBlock($ip);
+    }
+
+    public static function clientIpBlocked(): bool
+    {
+        return self::isIpBlocked(self::clientIp());
+    }
+
     /** Пароль принят, но нужен код второго фактора (см. attempt/verify2fa). */
     public static function needs2fa(): bool
     {
