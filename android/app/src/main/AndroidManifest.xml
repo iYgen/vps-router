@@ -71,6 +71,16 @@
             </intent-filter>
         </service>
 
+        <!-- VPN-служба ядра sing-box (VLESS, Hysteria2, Trojan, Shadowsocks) -->
+        <service
+            android:name=".tunnel.BoxVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
         <!-- QR-сканер zxing — портретная ориентация -->
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"

@@ -289,7 +289,7 @@ private fun DevicesTab(online: Boolean) {
                             selected = data.tunnels.any { it.origin == "panel:${d.id}:$f" }, enabled = online,
                             leadingIcon = if (data.tunnels.any { it.origin == "panel:${d.id}:$f" }) { { Icon(Icons.Filled.Check, null, Modifier.size(14.dp)) } } else null,
                             onClick = {
-                                if (PanelClient.isTunnelFormat(f)) act("Импорт ${PanelClient.formatLabel(f)}…") {
+                                if (PanelClient.isConnectable(f)) act("Импорт ${PanelClient.formatLabel(f)}…") {
                                     val t = app.panel.importDeviceTunnel(d.id, d.name, f)
                                     ctx.toast("Туннель «${t.name}» добавлен")
                                 } else act("Загрузка ссылки…") {

@@ -251,6 +251,17 @@ class PanelClient(private val profile: PanelProfile) {
     }
 
     /** Текст конфига устройства: ссылка (vless://…) или .conf (amneziawg/wireguard). */
+    /** Готовый outbound sing-box (JSON) для протокола устройства — для ядра sing-box в приложении. */
+    suspend fun deviceOutbound(id: Int, format: String): String = withContext(Dispatchers.IO) {
+        val path = "/device-config.php?id=$id&format=" + java.net.URLEncoder.encode(format, "UTF-8") + "&outbound=1"
+        get(path).use { r ->
+            val body = r.body?.string().orEmpty()
+            if (!r.isSuccessful) throw PanelException(body.ifBlank { "HTTP ${r.code}" }, r.code)
+            if (!body.trimStart().startsWith("{")) throw PanelException("Панель не отдала outbound — обновите панель до 1.3")
+            body
+        }
+    }
+
     suspend fun deviceConfig(id: Int, format: String): String = withContext(Dispatchers.IO) {
         val path = "/device-config.php?id=$id&format=" + java.net.URLEncoder.encode(format, "UTF-8") + "&inline=1"
         get(path).use { r ->
@@ -454,6 +465,12 @@ class PanelClient(private val profile: PanelProfile) {
         }
 
         fun isTunnelFormat(f: String) = f.startsWith("amneziawg") || f.startsWith("wireguard")
+
+        /** Протоколы, которые приложение запускает на ядре sing-box. XHTTP ядро sing-box не умеет. */
+        fun isSingboxFormat(f: String) = f.substringBefore('@') in setOf("vless", "hysteria2", "trojan", "shadowsocks")
+
+        /** Можно добавить в соединения телефона (любое ядро). */
+        fun isConnectable(f: String) = isTunnelFormat(f) || isSingboxFormat(f)
     }
 }
 

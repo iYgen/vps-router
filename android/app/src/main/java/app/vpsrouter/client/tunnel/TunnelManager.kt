@@ -4,6 +4,7 @@ import android.content.Context
 import app.vpsrouter.client.data.AppLog
 import app.vpsrouter.client.data.Repository
 import app.vpsrouter.client.data.TunnelProfile
+import app.vpsrouter.client.data.isSingbox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -68,7 +69,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
         }
     }
 
-    private inner class AppTunnel(val profileId: String) : Tunnel {
+    private inner class AppTunnel(val profileId: String, val box: Boolean = false) : Tunnel {
         override fun getName() = "vpsr"
         override fun onStateChange(newState: Tunnel.State) {
             _status.value = _status.value.copy(
@@ -92,17 +93,37 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
             _status.value = _status.value.copy(busy = true, error = null)
             try {
                 val settings = repo.data.value.settings
-                val cfg = parseConfig(ConfigTransform.apply(profile.config, settings))
                 flushTraffic(); savedRx = 0; savedTx = 0
-                current?.let { if (it.profileId != profile.id) backend.setState(it, Tunnel.State.DOWN, null) }
-                val t = AppTunnel(profile.id)
-                current = t
-                backend.setState(t, Tunnel.State.UP, cfg)
+                val t = AppTunnel(profile.id, profile.isSingbox)
+                if (profile.isSingbox) {
+                    val cfg = BoxConfig.build(profile.config, settings)
+                    BoxVpnService.check(context, cfg)
+                    // Сначала гасим AmneziaWG, если он был активен.
+                    current?.let { if (!it.box) runCatching { backend.setState(it, Tunnel.State.DOWN, null) } }
+                    val svc = BoxVpnService.obtain(context)
+                    svc.onStopped = { reason -> scope.launch { onBoxStopped(t, reason) } }
+                    current = t
+                    svc.startBox(cfg)
+                    boxBase = uidBytes()
+                } else {
+                    val cfg = parseConfig(ConfigTransform.apply(profile.config, settings))
+                    current?.let {
+                        if (it.box) BoxVpnService.instance?.let { s -> s.onStopped = null; s.stopBox() }
+                        else if (it.profileId != profile.id) backend.setState(it, Tunnel.State.DOWN, null)
+                    }
+                    current = t
+                    backend.setState(t, Tunnel.State.UP, cfg)
+                }
                 _status.value = TunnelStatus(activeId = profile.id, state = Tunnel.State.UP, connectedAt = System.currentTimeMillis())
                 AppLog.i("Туннель «${profile.name}» подключён (${ConfigTransform.describe(settings)})")
                 repo.update { it.copy(lastTunnelId = profile.id) }
                 startStats(t)
             } catch (e: Exception) {
+                if (profile.isSingbox) {
+                    BoxVpnService.instance?.let { runCatching { it.onStopped = null; it.stopBox() } }
+                    current = null
+                    _status.value = TunnelStatus()
+                }
                 _status.value = _status.value.copy(busy = false, error = describe(e))
                 AppLog.e("Не удалось подключить «${profile.name}»: ${describe(e)}")
             }
@@ -114,11 +135,13 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
             val t = current ?: return@withLock
             flushTraffic(); savedRx = 0; savedTx = 0
             try {
-                backend.setState(t, Tunnel.State.DOWN, null)
+                if (t.box) BoxVpnService.instance?.let { it.onStopped = null; it.stopBox() }
+                else backend.setState(t, Tunnel.State.DOWN, null)
             } catch (e: Exception) {
                 _status.value = _status.value.copy(error = describe(e))
             }
             statsJob?.cancel()
+            current = null
             _status.value = TunnelStatus()
             SpeedNotifier.hide(context)
             AppLog.i("Туннель отключён")
@@ -136,13 +159,21 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
             var tick = 0
             while (isActive) {
                 runCatching {
-                    val st = backend.getStatistics(t)
-                    var hs = 0L
-                    for (k in st.peers()) {
-                        st.peer(k)?.let { hs = maxOf(hs, it.latestHandshakeEpochMillis()) }
-                    }
                     val prev = _status.value
-                    val rx = st.totalRx(); val tx = st.totalTx()
+                    var hs = 0L
+                    val rx: Long; val tx: Long
+                    if (t.box) {
+                        // У sing-box нет «рукопожатия»: соединение живо, пока приходит трафик.
+                        val (r, w) = uidBytes()
+                        rx = maxOf(0, r - boxBase.first); tx = maxOf(0, w - boxBase.second)
+                        hs = if (rx > prev.rx || prev.lastHandshake == 0L) System.currentTimeMillis() else prev.lastHandshake
+                    } else {
+                        val st = backend.getStatistics(t)
+                        for (k in st.peers()) {
+                            st.peer(k)?.let { hs = maxOf(hs, it.latestHandshakeEpochMillis()) }
+                        }
+                        rx = st.totalRx(); tx = st.totalTx()
+                    }
                     _status.value = prev.copy(
                         rx = rx, tx = tx, lastHandshake = hs, busy = false,
                         rxRate = if (prev.rx in 1..rx) rx - prev.rx else 0,
@@ -157,6 +188,23 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                 delay(1000)
             }
         }
+    }
+
+    /** Ядро sing-box остановилось само или система отозвала VPN. */
+    private suspend fun onBoxStopped(t: AppTunnel, reason: String?) = mutex.withLock {
+        if (current !== t) return@withLock
+        flushTraffic(); savedRx = 0; savedTx = 0
+        statsJob?.cancel()
+        current = null
+        _status.value = TunnelStatus(error = reason)
+        SpeedNotifier.hide(context)
+    }
+
+    // Трафик ядра sing-box: все его сокеты к серверу принадлежат нашему приложению.
+    private var boxBase = 0L to 0L
+    private fun uidBytes(): Pair<Long, Long> {
+        val uid = android.os.Process.myUid()
+        return maxOf(0L, android.net.TrafficStats.getUidRxBytes(uid)) to maxOf(0L, android.net.TrafficStats.getUidTxBytes(uid))
     }
 
     private fun describe(e: Exception): String = when (e) {

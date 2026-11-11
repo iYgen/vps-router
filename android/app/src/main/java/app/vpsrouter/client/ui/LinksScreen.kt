@@ -54,6 +54,7 @@ import androidx.navigation.NavController
 import app.vpsrouter.client.App
 import app.vpsrouter.client.awg.AwgFactory
 import app.vpsrouter.client.data.AppData
+import app.vpsrouter.client.data.isSingbox
 import app.vpsrouter.client.data.TunnelProfile
 import org.amnezia.awg.backend.Tunnel
 
@@ -61,7 +62,7 @@ private data class Hop(val icon: ImageVector, val title: String, val sub: String
 
 /** Цепочка «телефон → [ретранслятор] → сервер → интернет» для туннеля. Только реальные данные. */
 private fun chainOf(t: TunnelProfile, d: AppData): List<Hop> {
-    val endpoint = AwgFactory.endpointOf(t.config)?.let { "${it.first}:${it.second}" }
+    val endpoint = (if (t.isSingbox) app.vpsrouter.client.tunnel.BoxConfig.endpointOf(t.config) else AwgFactory.endpointOf(t.config))?.let { "${it.first}:${it.second}" }
     val hops = mutableListOf(Hop(Icons.Filled.Smartphone, "Телефон", null))
     when (t.source) {
         "local" -> {

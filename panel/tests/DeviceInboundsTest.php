@@ -79,6 +79,34 @@ class DeviceInboundsTest extends TestCase
         $this->assertContains('9443/tcp', DeviceInbounds::openPorts());
     }
 
+    public function testAppOutboundsForSingboxProtocols(): void
+    {
+        DeviceInbounds::saveSettings(self::ALL_ON);
+        $client = Client::find(Client::create('App-' . uniqid())['id']);
+        $configs = DeviceInbounds::clientConfigs($client);
+
+        foreach (['vless', 'shadowsocks', 'trojan', 'hysteria2'] as $p) {
+            $o = $configs[$p]['outbound'] ?? null;
+            $this->assertIsArray($o, $p);
+            $this->assertSame($p, $o['type']);
+            $this->assertSame('203.0.113.10', $o['server']);
+            $this->assertSame(self::ALL_ON[$p]['port'], $o['server_port']);
+        }
+        $this->assertSame($client['uuid'], $configs['vless']['outbound']['uuid']);
+        $this->assertSame('testpub', $configs['vless']['outbound']['tls']['reality']['public_key']);
+        $this->assertSame('salamander', $configs['hysteria2']['outbound']['obfs']['type']);
+        $this->assertArrayNotHasKey('outbound', $configs['wireguard']);
+        $this->assertArrayNotHasKey('outbound', $configs['amneziawg']);
+
+        // DUMP_OUTBOUNDS=<каталог> — выгрузить для проверки ядром: sing-box check -c <файл>
+        if ($dir = getenv('DUMP_OUTBOUNDS')) {
+            foreach (['vless', 'shadowsocks', 'trojan', 'hysteria2'] as $p) {
+                $cfg = ['outbounds' => [$configs[$p]['outbound'] + ['tag' => 'proxy']]];
+                file_put_contents("$dir/$p.json", json_encode($cfg, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+            }
+        }
+    }
+
     public function testVlessCanBeDisabledWithoutRealityBlockingBuild(): void
     {
         $values = self::ALL_ON;

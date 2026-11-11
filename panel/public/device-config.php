@@ -52,6 +52,17 @@ if ($parsed) {
         die('Протокол «' . DeviceInbounds::PROTOCOLS[$parsed[0]]['label'] . '»' . ($parsed[1] ? ' через этот ретранслятор' : '') . ' выключен или ещё не настроен (Настройки → «Протоколы подключения устройств»; Инфраструктура → связь-ретранслятор).');
     }
     $entry = $configs[$format];
+    if (!empty($_GET['outbound'])) {
+        // Для Android-приложения: готовый outbound sing-box (ссылки разбирать не нужно).
+        if (empty($entry['outbound'])) {
+            http_response_code(422);
+            die('Этот протокол в приложении не поддерживается ядром sing-box');
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: private, no-store');
+        echo json_encode($entry['outbound'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     $body = $entry['uri'] ?? $entry['file'];
     header('Content-Type: text/plain; charset=utf-8');
     if (empty($_GET['inline'])) {

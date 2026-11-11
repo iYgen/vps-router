@@ -18,8 +18,8 @@ android {
         targetSdk = 35
         // Версия приложения. При каждом выпуске увеличивайте versionCode — по нему
         // приложение и панель понимают, что есть обновление.
-        versionCode = 4
-        versionName = "0.3.1"
+        versionCode = 5
+        versionName = "0.4.0"
     }
 
     // Ключ подписи релизов: .secrets/android/keystore.properties в корне репозитория
@@ -79,6 +79,8 @@ android {
 
 dependencies {
     implementation(project(":tunnel"))
+    // Ядро sing-box (libbox, собрано gomobile из sing-box 1.14.4): VLESS, Hysteria2, Trojan, Shadowsocks.
+    implementation(files("libs/libbox.aar"))
 
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)

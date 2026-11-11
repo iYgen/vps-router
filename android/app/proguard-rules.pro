@@ -20,3 +20,8 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**
+
+# libbox (sing-box): JNI-мост gomobile вызывает классы и методы по имени
+-keep class io.nekohasekai.** { *; }
+-keep class go.** { *; }
+-keep class app.vpsrouter.client.tunnel.BoxVpnService { *; }

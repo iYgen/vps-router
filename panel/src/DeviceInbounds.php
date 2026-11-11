@@ -619,6 +619,9 @@ class DeviceInbounds
                         $client['uuid'], self::uriHost($host), $port, rawurlencode($sni), rawurlencode($pbk), rawurlencode($sid), rawurlencode($name)
                     );
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-vless.txt");
+                    $out[$protocol]['outbound'] = ['type' => 'vless', 'server' => $host, 'server_port' => $port, 'uuid' => $client['uuid'],
+                        'flow' => 'xtls-rprx-vision', 'tls' => ['enabled' => true, 'server_name' => $sni,
+                        'utls' => ['enabled' => true, 'fingerprint' => 'edge'], 'reality' => ['enabled' => true, 'public_key' => $pbk, 'short_id' => $sid]]];
                     break;
 
                 case 'xhttp':
@@ -654,6 +657,8 @@ class DeviceInbounds
                     $uri = 'ss://' . self::SS_METHOD . ':' . rawurlencode($serverPsk . ':' . $client['ss_psk'])
                         . '@' . self::uriHost($host) . ':' . $port . '#' . rawurlencode($name);
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-shadowsocks.txt");
+                    $out[$protocol]['outbound'] = ['type' => 'shadowsocks', 'server' => $host, 'server_port' => $port,
+                        'method' => self::SS_METHOD, 'password' => $serverPsk . ':' . $client['ss_psk']];
                     break;
 
                 case 'trojan':
@@ -666,6 +671,8 @@ class DeviceInbounds
                         rawurlencode($client['password']), self::uriHost($host), $port, rawurlencode($sni), rawurlencode($name)
                     );
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-trojan.txt");
+                    $out[$protocol]['outbound'] = ['type' => 'trojan', 'server' => $host, 'server_port' => $port, 'password' => $client['password'],
+                        'tls' => ['enabled' => true, 'server_name' => $sni, 'insecure' => true]];
                     break;
 
                 case 'hysteria2':
@@ -683,6 +690,12 @@ class DeviceInbounds
                     $uri = 'hysteria2://' . rawurlencode($client['password']) . '@' . self::uriHost($host) . ':' . $port
                         . '/?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986) . '#' . rawurlencode($name);
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-hysteria2.txt");
+                    $hy = ['type' => 'hysteria2', 'server' => $host, 'server_port' => $port, 'password' => $client['password'],
+                        'tls' => ['enabled' => true, 'server_name' => self::tlsSni(), 'insecure' => true]];
+                    if ($obfs) {
+                        $hy['obfs'] = ['type' => 'salamander', 'password' => $obfs];
+                    }
+                    $out[$protocol]['outbound'] = $hy;
                     break;
 
                 case 'wireguard':

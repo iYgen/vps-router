@@ -177,7 +177,7 @@ fun DeviceChoiceDialog() {
                             Icon(Icons.Filled.PhoneAndroid, null, tint = Pal.accent2); Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(d.name, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Muted(if (n == 0) "нет AmneziaWG/WireGuard" else "соединений: $n")
+                                Muted(if (n == 0) "нет поддерживаемых соединений" else "соединений: $n")
                             }
                         }
                     }

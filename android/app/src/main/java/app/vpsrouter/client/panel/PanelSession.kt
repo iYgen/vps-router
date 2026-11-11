@@ -219,19 +219,21 @@ class PanelSession(private val repo: Repository) {
     /** Скачать конфиг устройства и сохранить как туннель (или обновить существующий). */
     suspend fun importDeviceTunnel(deviceId: Int, deviceName: String, format: String): TunnelProfile {
         val c = client ?: throw PanelException("Панель не подключена")
-        val conf = c.deviceConfig(deviceId, format)
-        app.vpsrouter.client.tunnel.TunnelManager.parseConfig(conf) // валидация
+        val box = PanelClient.isSingboxFormat(format)
+        val conf = if (box) c.deviceOutbound(deviceId, format) else c.deviceConfig(deviceId, format)
+        if (box) kotlinx.serialization.json.Json.parseToJsonElement(conf) // валидация JSON
+        else app.vpsrouter.client.tunnel.TunnelManager.parseConfig(conf) // валидация
         val origin = "panel:$deviceId:$format"
         val existing = repo.data.value.tunnels.firstOrNull { it.origin == origin }
         val via = if (format.contains('@')) relayName(format.substringAfter('@')) else null
         val name = deviceName + if (via != null) " ⇢ $via" else ""
-        val t = (existing ?: TunnelProfile(name = name, config = conf, source = "panel", origin = origin, via = via)).copy(config = conf, via = via)
+        val t = (existing ?: TunnelProfile(name = name, config = conf, kind = if (box) "singbox" else "awg", source = "panel", origin = origin, via = via)).copy(config = conf, via = via, kind = if (box) "singbox" else "awg")
         repo.upsertTunnel(t)
         return t
     }
 
     /** Форматы устройства, которые можно добавить как туннель (AWG/WG, включая варианты через ретрансляторы). */
-    fun tunnelFormats(d: PanelDevice): List<String> = if (d.revoked) emptyList() else d.formats.filter { PanelClient.isTunnelFormat(it) }
+    fun tunnelFormats(d: PanelDevice): List<String> = if (d.revoked) emptyList() else d.formats.filter { PanelClient.isConnectable(it) }
 
     /** Уже добавлен ли этот конфиг устройства в туннели. */
     fun isImported(deviceId: Int, format: String) = repo.data.value.tunnels.any { it.origin == "panel:$deviceId:$format" }

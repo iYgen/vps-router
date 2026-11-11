@@ -5,12 +5,17 @@ import java.util.UUID
 
 fun newId(): String = UUID.randomUUID().toString().substring(0, 8)
 
-/** Профиль туннеля AmneziaWG/WireGuard — текст конфига в формате awg-quick (.conf). */
+/**
+ * Профиль соединения. kind = "awg": config — текст awg-quick (.conf), ядро AmneziaWG.
+ * kind = "singbox": config — JSON outbound sing-box (VLESS+Reality, Hysteria2, Trojan,
+ * Shadowsocks) из панели, ядро sing-box (libbox).
+ */
 @Serializable
 data class TunnelProfile(
     val id: String = newId(),
     val name: String,
     val config: String,
+    val kind: String = "awg",
     /** manual | panel | local — откуда взялся (импорт / панель VPS Router / свой сервер). */
     val source: String = "manual",
     /** Для panel: id устройства в панели; для local: "<serverId>/<peerId>". */
@@ -50,6 +55,8 @@ data class AwgObfs(
 ) {
     fun lines(): String = "Jc = $jc\nJmin = $jmin\nJmax = $jmax\nS1 = $s1\nS2 = $s2\nH1 = $h1\nH2 = $h2\nH3 = $h3\nH4 = $h4\n"
 }
+
+val TunnelProfile.isSingbox: Boolean get() = kind == "singbox"
 
 @Serializable
 data class AwgPeer(

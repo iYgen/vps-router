@@ -36,9 +36,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import app.vpsrouter.client.data.isSingbox
 import app.vpsrouter.client.App
 import app.vpsrouter.client.awg.AwgFactory
 import app.vpsrouter.client.data.ServerRole
+import app.vpsrouter.client.tunnel.BoxConfig
 import app.vpsrouter.client.tunnel.TunnelManager
 import kotlinx.coroutines.launch
 
@@ -78,10 +80,11 @@ fun TunnelDetailScreen(id: String, nav: NavController) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionCard {
                 Field(name, { name = it }, "Название")
-                AwgFactory.endpointOf(t.config)?.let { (h, p) -> Row2("Endpoint", "$h:$p") }
+                (if (t.isSingbox) BoxConfig.endpointOf(t.config) else AwgFactory.endpointOf(t.config))?.let { (h, p) -> Row2("Сервер", "$h:$p") }
+                Row2("Протокол", connKind(t).substringAfter("· ", connKind(t)) + if (t.isSingbox) " · ядро sing-box" else "")
                 Row2("Источник", when (t.source) { "panel" -> "панель VPS Router"; "local" -> "свой сервер"; else -> "импорт" })
                 t.via?.let { Row2("Ретранслятор", it) }
-                val parsed = remember(t.config) { runCatching { TunnelManager.parseConfig(t.config) }.getOrNull() }
+                val parsed = remember(t.config) { if (t.isSingbox) null else runCatching { TunnelManager.parseConfig(t.config) }.getOrNull() }
                 parsed?.let { c ->
                     Row2("Адрес", c.`interface`.addresses.joinToString())
                     Row2("Обфускация AWG", if (c.`interface`.junkPacketCount.isPresent) "включена" else "нет (WireGuard)")
@@ -98,7 +101,7 @@ fun TunnelDetailScreen(id: String, nav: NavController) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (editing || name != t.name) {
                         Button(onClick = {
-                            err = runCatching { TunnelManager.parseConfig(conf); null }.getOrElse { "Неверный конфиг: ${it.message}" }
+                            err = runCatching { if (t.isSingbox) kotlinx.serialization.json.Json.parseToJsonElement(conf) else TunnelManager.parseConfig(conf); null }.getOrElse { "Неверный конфиг: ${it.message}" }
                             if (err == null) {
                                 val n = t.copy(name = name.ifBlank { t.name }, config = conf)
                                 app.repo.upsertTunnel(n)
@@ -112,14 +115,14 @@ fun TunnelDetailScreen(id: String, nav: NavController) {
             }
             SectionCard {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { qr = true }) { Text("QR-код") }
+                    if (!t.isSingbox) OutlinedButton(onClick = { qr = true }) { Text("QR-код") }
                     OutlinedButton(onClick = { ctx.shareText(t.config, "${t.name}.conf") }) { Text("Поделиться") }
                     OutlinedButton(onClick = { ctx.copy(t.config, "Конфиг скопирован") }) { Text("Копировать") }
-                    OutlinedButton(onClick = { relayPick = true }) { Text("Через ретранслятор…") }
+                    if (!t.isSingbox) OutlinedButton(onClick = { relayPick = true }) { Text("Через ретранслятор…") }
                     Button(onClick = { del = true }, colors = ButtonDefaults.buttonColors(containerColor = Pal.danger)) { Text("Удалить") }
                 }
                 Spacer(Modifier.height(4.dp))
-                Muted("QR и файл подходят для официальных AmneziaWG / AmneziaVPN на других устройствах.")
+                Muted(if (t.isSingbox) "Соединение на ядре sing-box: outbound из панели VPS Router." else "QR и файл подходят для официальных AmneziaWG / AmneziaVPN на других устройствах.")
             }
             Spacer(Modifier.height(24.dp))
         }
