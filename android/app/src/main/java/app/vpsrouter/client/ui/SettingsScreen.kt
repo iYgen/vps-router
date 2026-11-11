@@ -81,6 +81,7 @@ fun SettingsScreen(nav: NavController) {
     val scope = rememberCoroutineScope()
     val s = data.settings
     var dnsDialog by remember { mutableStateOf(false) }
+    var mtuDialog by remember { mutableStateOf(false) }
     var killInfo by remember { mutableStateOf(false) }
     // Резервная копия: сначала пароль, затем выбор файла.
     var backupMode by remember { mutableStateOf<String?>(null) } // "export" | "import"
@@ -121,6 +122,7 @@ fun SettingsScreen(nav: NavController) {
                 }
                 SettingRow("Kill Switch", "Блокировать интернет, если VPN отключился", onClick = { killInfo = true })
                 SettingRow("DNS", s.dnsOverride.ifBlank { "Из конфигурации туннеля" }, onClick = { dnsDialog = true })
+                SettingRow("MTU", if (s.mtu > 0) s.mtu.toString() else "Автоматически", onClick = { mtuDialog = true })
                 SettingRow("Маршрутизация", "Профиль устройства и маршруты панели", onClick = { nav.navigate("routes") })
             }
         }
@@ -198,6 +200,29 @@ fun SettingsScreen(nav: NavController) {
         )
     }
 
+
+    if (mtuDialog) {
+        var mtu by remember { mutableStateOf(if (s.mtu > 0) s.mtu.toString() else "") }
+        val n = mtu.trim().toIntOrNull()
+        val valid = mtu.isBlank() || (n != null && n in 1000..1500)
+        AlertDialog(
+            onDismissRequest = { mtuDialog = false },
+            title = { Text("MTU") },
+            text = {
+                Column {
+                    Field(mtu, { mtu = it.filter(Char::isDigit) }, "От 1000 до 1500", placeholder = "1400")
+                    Muted("Пусто — автоматически. Уменьшите (1280–1380), если сайты открываются частично или зависают загрузки — так бывает в мобильных сетях.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("1280", "1380", "1420").forEach { d -> TextButton(onClick = { mtu = d }) { Text(d, fontSize = 12.sp) } }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = valid, onClick = { mtuDialog = false; scope.launch { applySettings { it.copy(mtu = n ?: 0) } } }) { Text("Сохранить") }
+            },
+            dismissButton = { TextButton(onClick = { mtuDialog = false }) { Text("Отмена") } },
+        )
+    }
     backupMode?.let { mode ->
         var pass by remember { mutableStateOf("") }
         var pass2 by remember { mutableStateOf("") }

@@ -2,6 +2,7 @@ package app.vpsrouter.client.tunnel
 
 import app.vpsrouter.client.data.AppSettings
 import app.vpsrouter.client.data.RouteMode
+import app.vpsrouter.client.data.viaApps
 
 /**
  * Профиль маршрутизации на устройстве накладывается на конфиг в момент подключения,
@@ -34,6 +35,7 @@ object ConfigTransform {
             if (section == "interface" && t.contains('=')) {
                 when (key(t)) {
                     "dns" -> if (s.dnsOverride.isNotBlank()) continue
+                    "mtu" -> if (s.mtu > 0) continue
                     "excludedapplications", "includedapplications" -> if (s.routeMode != RouteMode.ALL || s.hiddenApps.isNotEmpty()) continue
                 }
             }
@@ -49,6 +51,7 @@ object ConfigTransform {
         if (section == "interface") interfaceEnd = out.size
         val extra = mutableListOf<String>()
         if (s.dnsOverride.isNotBlank()) extra += "DNS = ${s.dnsOverride.trim()}"
+        if (s.mtu > 0) extra += "MTU = ${s.mtu}"
         val (included, excluded) = appLists(s)
         if (included.isNotEmpty()) extra += "IncludedApplications = ${included.joinToString(", ")}"
         else if (excluded.isNotEmpty()) extra += "ExcludedApplications = ${excluded.joinToString(", ")}"
@@ -67,7 +70,7 @@ object ConfigTransform {
      */
     fun appLists(s: AppSettings): Pair<List<String>, List<String>> = when (s.routeMode) {
         RouteMode.ONLY_APPS -> {
-            val inc = s.apps.filterNot { it in s.hiddenApps }
+            val inc = s.viaApps.filterNot { it in s.hiddenApps }
             if (inc.isNotEmpty()) inc to emptyList() else emptyList<String>() to s.hiddenApps
         }
         RouteMode.EXCLUDE_APPS -> emptyList<String>() to (s.apps + s.hiddenApps).distinct()
@@ -79,7 +82,7 @@ object ConfigTransform {
             when (s.routeMode) {
                 RouteMode.ALL -> "Весь трафик через VPN"
                 RouteMode.EXCLUDE_APPS -> if (s.apps.isEmpty()) "Весь трафик через VPN" else "Всё, кроме ${s.apps.size} прил."
-                RouteMode.ONLY_APPS -> if (s.apps.isEmpty()) "Весь трафик через VPN" else "Только ${s.apps.size} прил."
+                RouteMode.ONLY_APPS -> if (s.viaApps.isEmpty()) "Весь трафик через VPN" else "Только ${s.viaApps.size} прил."
             }
         )
         if (s.bypassLan) append(" · без локальной сети")

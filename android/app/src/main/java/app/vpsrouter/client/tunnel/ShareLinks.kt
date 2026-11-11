@@ -1,6 +1,7 @@
 package app.vpsrouter.client.tunnel
 
-import android.util.Base64
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -65,10 +66,33 @@ object ShareLinks {
         fun flag(k: String) = q[k] == "1" || q[k].equals("true", true)
     }
 
+    @OptIn(ExperimentalEncodingApi::class)
     private fun b64(s: String): String {
-        val clean = s.trim().replace('-', '+').replace('_', '/')
+        val clean = s.filterNot { it.isWhitespace() }.trimEnd('=').replace('-', '+').replace('_', '/')
         val pad = clean + "=".repeat((4 - clean.length % 4) % 4)
-        return String(Base64.decode(pad, Base64.DEFAULT), Charsets.UTF_8)
+        return String(Base64.Default.decode(pad), Charsets.UTF_8)
+    }
+
+    /**
+     * Outbound из JSON: готовый outbound sing-box ("type") или Xray ("protocol"), либо полный
+     * конфиг — тогда берётся первый outbound, который ведёт на сервер (не direct/block/dns).
+     */
+    fun outboundFromJson(text: String): String {
+        val root = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrElse { throw IllegalArgumentException("JSON не читается: ${it.message}") }
+        val skip = setOf("direct", "block", "dns", "selector", "urltest", "freedom", "blackhole", "loopback")
+        fun ok(o: JsonObject): Boolean {
+            val k = (o["type"] ?: o["protocol"])?.jsonPrimitive?.content ?: return false
+            return k !in skip
+        }
+        val o = when {
+            root.containsKey("outbounds") -> (root["outbounds"] as? JsonArray)?.map { it.jsonObject }?.firstOrNull(::ok)
+                ?: throw IllegalArgumentException("В конфиге нет outbound, ведущего на сервер")
+            ok(root) -> root
+            else -> throw IllegalArgumentException("В JSON нет ни \"type\" (sing-box), ни \"protocol\" (Xray)")
+        }
+        // Метку и привязки к другим outbound убираем — приложение задаёт свои.
+        val clean = JsonObject(o - "tag" - "detour" - "domain_resolver")
+        return enc(clean)
     }
 
     private fun enc(o: JsonObject) = json.encodeToString(JsonObject.serializer(), o)

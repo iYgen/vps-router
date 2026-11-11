@@ -51,6 +51,9 @@ fun AppRoot(activity: MainActivity) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
+    val appData by app.repo.data.collectAsState()
+    // Вкладка «Серверы» — только когда у пользователя есть свои серверы: пустое не показываем.
+    val shown = tabs.filter { it.route != "servers" || appData.servers.isNotEmpty() }
 
     // Первый запуск — онбординг; если уже что-то настроено (обновление со старой версии) — сразу главная.
     val start = remember {
@@ -91,7 +94,7 @@ fun AppRoot(activity: MainActivity) {
         bottomBar = {
             if (route in tabs.map { it.route }) {
                 NavigationBar(containerColor = Pal.surface) {
-                    tabs.forEach { t ->
+                    shown.forEach { t ->
                         NavigationBarItem(
                             selected = route == t.route,
                             onClick = {
@@ -145,11 +148,11 @@ fun AppRoot(activity: MainActivity) {
     // .conf, открытый из файлового менеджера/мессенджера
     val pending by activity.pendingImport
     pending?.let { text ->
-        ImportDialog(text, onDismiss = { activity.pendingImport.value = null }) { name, conf ->
-            app.repo.upsertTunnel(TunnelProfile(name = name, config = conf))
+        ImportDialog(text, onDismiss = { activity.pendingImport.value = null }) { list ->
+            list.forEach { app.repo.upsertTunnel(it) }
             app.repo.update { it.copy(settings = it.settings.copy(onboarded = true)) }
             activity.pendingImport.value = null
-            ctx.toast("Туннель «$name» добавлен")
+            ctx.toast(if (list.size == 1) "Сервер «${list[0].name}» добавлен" else "Добавлено серверов: ${list.size}")
         }
     }
 }

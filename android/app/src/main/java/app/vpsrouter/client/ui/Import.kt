@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import app.vpsrouter.client.App
 import app.vpsrouter.client.data.TunnelProfile
+import app.vpsrouter.client.tunnel.BoxConfig
+import app.vpsrouter.client.tunnel.ShareLinks
 import app.vpsrouter.client.tunnel.TunnelManager
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -57,16 +59,21 @@ fun rememberImporter(onPanelLink: () -> Unit = {}, onImported: (TunnelProfile) -
         Importer(
             scan = { askFirst(Perm.CAMERA) { scan.launch(ScanOptions().setPrompt("Наведите на QR-код конфигурации").setBeepEnabled(false).setOrientationLocked(false)) } },
             file = { pick.launch(arrayOf("*/*")) },
-            paste = { text = "" },
+            // Вставить: если в буфере ссылка или JSON — сразу подставляем.
+            paste = {
+                val clip = (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                    ?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty().trim()
+                text = if (ShareLinks.isLink(clip) || clip.startsWith("{") || clip.contains("[Interface]")) clip else ""
+            },
         )
     }
     val dialog: @Composable () -> Unit = {
         text?.let { t ->
-            ImportDialog(t, onDismiss = { text = null }) { name, conf ->
-                val p = TunnelProfile(name = name, config = conf)
-                App.instance.repo.upsertTunnel(p)
+            ImportDialog(t, onDismiss = { text = null }) { list ->
+                list.forEach { App.instance.repo.upsertTunnel(it) }
                 text = null
-                onImported(p)
+                if (list.size > 1) ctx.toast("Добавлено серверов: ${list.size}")
+                onImported(list.first())
             }
         }
     }
@@ -83,33 +90,54 @@ fun ImportMenu(expanded: Boolean, onDismiss: () -> Unit, importer: Importer) {
 }
 
 @Composable
-fun ImportDialog(initial: String, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+fun ImportDialog(initial: String, onDismiss: () -> Unit, onSave: (List<TunnelProfile>) -> Unit) {
     var text by remember { mutableStateOf(initial) }
-    var name by remember { mutableStateOf("Туннель") }
+    var name by remember { mutableStateOf("") }
     var err by remember { mutableStateOf<String?>(null) }
-    val ctx = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Импорт конфигурации") },
+        title = { Text("Добавить соединение") },
         text = {
             Column {
-                Field(name, { name = it }, "Название")
-                Field(text, { text = it }, "Конфиг AmneziaWG / WireGuard (.conf)", singleLine = false, minLines = 6)
+                Field(name, { name = it }, "Название (необязательно)")
+                Field(text, { text = it }, "Ссылка, JSON или .conf", singleLine = false, minLines = 6)
+                Muted("Подходят: vless://, vmess://, trojan://, ss://, hysteria2://, tuic://, подписка (несколько ссылок или base64), JSON sing-box/Xray, конфиг AmneziaWG/WireGuard.")
                 err?.let { Text(it, color = Pal.danger, fontSize = 12.sp) }
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                val t = text.trim()
-                if (Regex("""^(vless|vmess|ss|trojan|hy2|hysteria2|tuic)://""").containsMatchIn(t)) {
-                    ctx.openLink(t); onDismiss(); return@TextButton
-                }
-                err = runCatching { TunnelManager.parseConfig(t); null }.getOrElse { "Неверный конфиг: ${it.message}" }
-                if (err == null) onSave(name.ifBlank { "Туннель" }, t)
+                runCatching { parseImport(text, name) }
+                    .onSuccess { onSave(it) }
+                    .onFailure { err = it.message ?: "Не удалось разобрать" }
             }) { Text("Сохранить") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
     )
+}
+
+/**
+ * Разобрать то, что вставил пользователь: ссылки (одна или подписка), JSON outbound / полный
+ * конфиг sing-box или Xray, либо .conf AmneziaWG/WireGuard. Ошибка — с понятным текстом.
+ */
+fun parseImport(input: String, name: String = ""): List<TunnelProfile> {
+    val t = input.trim()
+    if (t.isEmpty()) throw IllegalArgumentException("Вставьте ссылку, JSON или конфиг")
+    val links = ShareLinks.findAll(t)
+    if (links.isNotEmpty()) {
+        val errors = mutableListOf<String>()
+        val list = links.mapNotNull { l ->
+            runCatching { ShareLinks.parse(l) }.onFailure { errors += it.message ?: "?" }.getOrNull()
+        }.map { p -> TunnelProfile(name = if (links.size == 1 && name.isNotBlank()) name.trim() else p.name, config = p.outbound, kind = "singbox") }
+        if (list.isEmpty()) throw IllegalArgumentException(errors.firstOrNull() ?: "Ссылка не распознана")
+        return list
+    }
+    if (t.startsWith("{")) {
+        val out = ShareLinks.outboundFromJson(t)
+        return listOf(TunnelProfile(name = name.trim().ifBlank { ShareLinks.protocolOf(out) + (BoxConfig.endpointOf(out)?.let { " " + it.first } ?: "") }, config = out, kind = "singbox"))
+    }
+    runCatching { TunnelManager.parseConfig(t) }.getOrElse { throw IllegalArgumentException("Не похоже ни на ссылку, ни на JSON, ни на конфиг WireGuard: ${it.message}") }
+    return listOf(TunnelProfile(name = name.trim().ifBlank { "WireGuard" }, config = t))
 }
 
 /** Подключение/отключение с запросом системного разрешения на VPN. */

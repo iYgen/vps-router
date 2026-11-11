@@ -162,7 +162,12 @@ data class AppSettings(
     val githubUpdates: Boolean = true,
     /** MTU туннеля; 0 — автоматически (из конфига, для sing-box — 1400). */
     val mtu: Int = 0,
+    /** Список для «Только выбранные приложения» (отдельно от «Всё, кроме…»); null — старые версии хранили его в apps. */
+    val onlyApps: List<String>? = null,
 )
+
+/** Приложения, которые идут через VPN в режиме ONLY_APPS. */
+val AppSettings.viaApps: List<String> get() = onlyApps ?: apps
 
 /** Маршрут (группа правил) панели VPS Router: что и через какой выход идёт на сервере. */
 @Serializable

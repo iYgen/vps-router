@@ -53,6 +53,7 @@ import app.vpsrouter.client.App
 import app.vpsrouter.client.data.AppSettings
 import app.vpsrouter.client.data.PanelRoute
 import app.vpsrouter.client.data.RouteMode
+import app.vpsrouter.client.data.viaApps
 import app.vpsrouter.client.panel.PanelState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -90,33 +91,42 @@ fun RoutesScreen(nav: NavController) {
         item {
             Spacer(Modifier.height(12.dp))
             Text("Маршруты", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Muted("Что идёт через VPN на этом телефоне и какие сайты панель VPS Router отправляет через какой сервер.")
+            Muted("Какие приложения этого телефона идут через VPN. Действует для любого сервера; включённый VPN переподключится сам.")
         }
         item {
             SectionCard {
-                Text("Профиль устройства", fontWeight = FontWeight.SemiBold)
-                Muted("Применяется к любому туннелю. Включённый туннель переподключится автоматически.")
+                Text("Через VPN идут", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 listOf(
-                    RouteMode.ALL to "Весь трафик через VPN",
-                    RouteMode.EXCLUDE_APPS to "Всё, кроме выбранных приложений",
-                    RouteMode.ONLY_APPS to "Только выбранные приложения",
-                ).forEach { (mode, label) ->
+                    Triple(RouteMode.ALL, "Все приложения", "Самый простой и надёжный вариант"),
+                    Triple(RouteMode.EXCLUDE_APPS, "Все, кроме выбранных", "Например, банк или игра идут напрямую"),
+                    Triple(RouteMode.ONLY_APPS, "Только выбранные", "Например, только браузер и YouTube"),
+                ).forEach { (mode, label, hint) ->
                     Row(Modifier.fillMaxWidth().clickable { scope.launch { applySettings { it.copy(routeMode = mode) } } }, verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(s.routeMode == mode, { scope.launch { applySettings { it.copy(routeMode = mode) } } })
-                        Text(label)
+                        Column { Text(label); Muted(hint) }
                     }
                 }
-                if (s.routeMode != RouteMode.ALL) {
-                    OutlinedButton(onClick = { nav.navigate("apps") }, modifier = Modifier.padding(start = 12.dp)) {
-                        Text(if (s.apps.isEmpty()) "Выбрать приложения" else "Приложения: ${s.apps.size}")
+                val list = when (s.routeMode) { RouteMode.EXCLUDE_APPS -> s.apps; RouteMode.ONLY_APPS -> s.viaApps; else -> null }
+                if (list != null) {
+                    OutlinedButton(onClick = { nav.navigate("apps") }, modifier = Modifier.padding(start = 12.dp, top = 4.dp)) {
+                        Text(when {
+                            list.isEmpty() -> "Выбрать приложения"
+                            s.routeMode == RouteMode.ONLY_APPS -> "Через VPN: ${list.size} прил."
+                            else -> "Напрямую: ${list.size} прил."
+                        })
                     }
-                    if (s.apps.isEmpty()) Muted("Пока приложения не выбраны, через VPN идёт весь трафик.", Modifier.padding(start = 12.dp, top = 4.dp))
+                    if (list.isEmpty()) Muted("Пока ничего не выбрано — через VPN идут все приложения.", Modifier.padding(start = 12.dp, top = 4.dp))
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            }
+        }
+
+        item {
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Локальная сеть мимо VPN")
-                        Muted("Принтеры, роутер, NAS (192.168.x.x, 10.x.x.x) доступны напрямую")
+                        Text("Домашняя сеть напрямую", fontWeight = FontWeight.SemiBold)
+                        Muted("Роутер, принтер, NAS (192.168.x.x, 10.x.x.x) доступны при включённом VPN")
                     }
                     Switch(s.bypassLan, { v -> scope.launch { applySettings { it.copy(bypassLan = v) } } }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.accent))
                 }
@@ -126,16 +136,20 @@ fun RoutesScreen(nav: NavController) {
         item {
             SectionCard {
                 Text("Скрыть VPN от приложений", fontWeight = FontWeight.SemiBold)
-                Muted("Приложения вроде МЭШ, банков и Госуслуг проверяют, включён ли VPN. Отмеченные здесь всегда идут мимо туннеля: для них в телефоне нет признака VPN, и они видят ваш обычный (домашний) адрес. Остальные приложения работают через VPN как обычно.")
+                Muted("МЭШ, банки, Госуслуги проверяют, включён ли VPN. Отмеченные приложения всегда идут напрямую и VPN не замечают — при любом режиме выше.")
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(onClick = { nav.navigate("apps/hidden") }) {
-                    Text(if (s.hiddenApps.isEmpty()) "Выбрать приложения" else "Скрыто от приложений: ${s.hiddenApps.size}")
+                    Text(if (s.hiddenApps.isEmpty()) "Выбрать приложения" else "Скрыто от: ${s.hiddenApps.size} прил.")
                 }
-                Muted("Полностью спрятать VPN без root нельзя: Android всегда помечает VPN-сеть, и приложение, которое само идёт через VPN, это видит. Поэтому такие приложения выводятся из туннеля.", Modifier.padding(top = 6.dp))
             }
         }
 
-        item {
+        // Маршруты по сайтам задаются в панели VPS Router: без панели этого раздела нет.
+        if (data.panel != null) item {
+            val cur = app.tunnels.status.value.activeId ?: data.lastTunnelId
+            if (data.tunnels.firstOrNull { it.id == cur }?.source.let { it != null && it != "panel" }) {
+                Muted("Выбранный сейчас сервер — не VPS Router: маршруты ниже действуют только при подключении через VPS Router.", Modifier.padding(bottom = 6.dp))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Маршруты VPS Router", fontWeight = FontWeight.SemiBold, fontSize = 17.sp, modifier = Modifier.weight(1f))
                 when (panelState) {
@@ -145,10 +159,6 @@ fun RoutesScreen(nav: NavController) {
                 }
             }
             when {
-                data.panel == null -> SectionCard {
-                    Muted("Маршруты по сайтам (например, YouTube через сервер в Европе, банки напрямую) задаются в панели VPS Router.")
-                    TextButton(onClick = { nav.navigate("panel") }) { Text("Подключить панель") }
-                }
                 !online -> Muted("Панель недоступна — показаны сохранённые маршруты (${ago(data.panelCache.fetchedAt)}). Изменения станут доступны, когда панель ответит.")
             }
             busy?.let { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Muted(it) } }
@@ -223,7 +233,8 @@ fun AppPickerScreen(nav: NavController, hidden: Boolean = false) {
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<AppInfo>?>(null) }
     var query by remember { mutableStateOf("") }
-    var selected by remember { mutableStateOf((if (hidden) data.settings.hiddenApps else data.settings.apps).toSet()) }
+    val only = !hidden && data.settings.routeMode == RouteMode.ONLY_APPS
+    var selected by remember { mutableStateOf((if (hidden) data.settings.hiddenApps else if (only) data.settings.viaApps else data.settings.apps).toSet()) }
 
     LaunchedEffect(Unit) {
         apps = withContext(Dispatchers.IO) {
@@ -238,9 +249,18 @@ fun AppPickerScreen(nav: NavController, hidden: Boolean = false) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        BackBar(if (hidden) "Скрыть VPN от" else if (data.settings.routeMode == RouteMode.ONLY_APPS) "Только через VPN" else "Мимо VPN", nav) {
+        BackBar(if (hidden) "Скрыть VPN от" else if (only) "Только через VPN" else "Напрямую, мимо VPN", nav) {
             TextButton(onClick = {
-                scope.launch { applySettings { if (hidden) it.copy(hiddenApps = selected.sorted()) else it.copy(apps = selected.sorted()) } }
+                scope.launch {
+                    applySettings {
+                        when {
+                            hidden -> it.copy(hiddenApps = selected.sorted())
+                            only -> it.copy(onlyApps = selected.sorted())
+                            // Старый общий список становится списком «только выбранные», чтобы он не потерялся.
+                            else -> it.copy(apps = selected.sorted(), onlyApps = it.onlyApps ?: it.apps)
+                        }
+                    }
+                }
                 nav.popBackStack()
             }) { Text("Готово (${selected.size})") }
         }

@@ -41,6 +41,8 @@ import app.vpsrouter.client.App
 import app.vpsrouter.client.awg.AwgFactory
 import app.vpsrouter.client.data.ServerRole
 import app.vpsrouter.client.tunnel.BoxConfig
+import app.vpsrouter.client.tunnel.OutboundFields
+import androidx.compose.ui.text.font.FontWeight
 import app.vpsrouter.client.tunnel.TunnelManager
 import kotlinx.coroutines.launch
 
@@ -82,12 +84,50 @@ fun TunnelDetailScreen(id: String, nav: NavController) {
                 Field(name, { name = it }, "Название")
                 (if (t.isSingbox) BoxConfig.endpointOf(t.config) else AwgFactory.endpointOf(t.config))?.let { (h, p) -> Row2("Сервер", "$h:$p") }
                 Row2("Протокол", connKind(t).substringAfter("· ", connKind(t)) + when { !t.isSingbox -> ""; BoxConfig.isXray(t.config) -> " · ядро Xray"; else -> " · ядро sing-box" })
-                Row2("Источник", when (t.source) { "panel" -> "панель VPS Router"; "local" -> "свой сервер"; else -> "импорт" })
+                Row2("Источник", when (t.source) { "panel" -> "панель VPS Router"; "local" -> "свой сервер"; else -> "добавлено вручную" })
                 t.via?.let { Row2("Ретранслятор", it) }
                 val parsed = remember(t.config) { if (t.isSingbox) null else runCatching { TunnelManager.parseConfig(t.config) }.getOrNull() }
                 parsed?.let { c ->
                     Row2("Адрес", c.`interface`.addresses.joinToString())
                     Row2("Обфускация AWG", if (c.`interface`.junkPacketCount.isPresent) "включена" else "нет (WireGuard)")
+                }
+            }
+            // Ручная правка полей (как в v2rayTun). Соединения из панели она перезаписывает при синхронизации.
+            if (t.isSingbox && t.source != "panel") {
+                val init = remember(t.config) { runCatching { OutboundFields.read(t.config) }.getOrNull() }
+                if (init != null) SectionCard {
+                    var f by remember(t.config) { mutableStateOf(init) }
+                    var ferr by remember(t.config) { mutableStateOf<String?>(null) }
+                    Text("Параметры", fontWeight = FontWeight.SemiBold, color = Pal.accent2)
+                    Field(f.server, { f = f.copy(server = it) }, "Адрес сервера")
+                    Field(f.port, { f = f.copy(port = it.filter(Char::isDigit)) }, "Порт")
+                    if (f.hasTls) {
+                        Field(f.sni, { f = f.copy(sni = it) }, "SNI (имя сервера TLS)")
+                        Field(f.fingerprint, { f = f.copy(fingerprint = it) }, "Отпечаток (chrome, firefox, safari, edge, random…)")
+                    }
+                    if (f.hasTransport) {
+                        Field(f.path, { f = f.copy(path = it) }, "Путь / имя сервиса")
+                        Field(f.host, { f = f.copy(host = it) }, "Host")
+                        if (f.isXray && BoxConfig.isXray(t.config) && t.config.contains("xhttp")) {
+                            Muted("Режим XHTTP")
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("auto", "packet-up", "stream-up", "stream-one").forEach { m ->
+                                    androidx.compose.material3.FilterChip(selected = f.mode.ifEmpty { "auto" } == m, onClick = { f = f.copy(mode = m) }, label = { Text(m) })
+                                }
+                            }
+                        }
+                    }
+                    ferr?.let { Text(it, color = Pal.danger, fontSize = 12.sp) }
+                    if (f != init) Button(onClick = {
+                        runCatching { OutboundFields.write(t.config, f) }
+                            .onSuccess { c ->
+                                val n = t.copy(config = c, name = name.ifBlank { t.name })
+                                app.repo.upsertTunnel(n); ferr = null
+                                scope.launch { app.tunnels.restartIfActive(n) }
+                                ctx.toast("Сохранено")
+                            }
+                            .onFailure { ferr = it.message }
+                    }) { Text("Сохранить параметры") }
                 }
             }
             SectionCard {
@@ -122,7 +162,7 @@ fun TunnelDetailScreen(id: String, nav: NavController) {
                     Button(onClick = { del = true }, colors = ButtonDefaults.buttonColors(containerColor = Pal.danger)) { Text("Удалить") }
                 }
                 Spacer(Modifier.height(4.dp))
-                Muted(if (t.isSingbox) "Соединение на ядре sing-box: outbound из панели VPS Router." else "QR и файл подходят для официальных AmneziaWG / AmneziaVPN на других устройствах.")
+                Muted(if (t.isSingbox && t.source == "panel") "Соединение из панели VPS Router: настройки приходят с сервера." else if (t.isSingbox) "Ниже «Редактировать» — полный JSON outbound для тонкой настройки." else "QR и файл подходят для официальных AmneziaWG / AmneziaVPN на других устройствах.")
             }
             Spacer(Modifier.height(24.dp))
         }

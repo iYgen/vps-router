@@ -2,6 +2,7 @@ package app.vpsrouter.client
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasScrollAction
@@ -65,8 +66,12 @@ class SeededApp : App() {
         val panelRelay = fromPanel.copy(id = "t4", name = "Мой телефон ⇢ relay-1", origin = "panel:4:amneziawg@5", via = "relay-1")
         val panelVless = TunnelProfile(id = "t5", name = "Мой телефон", kind = "singbox", source = "panel", origin = "panel:4:vless",
             config = """{"type":"vless","server":"panel.example.com","server_port":443,"uuid":"u"}""")
+        // Добавлено вручную по ссылке vless:// (как в v2rayTun).
+        val manual = app.vpsrouter.client.tunnel.ShareLinks.parse("vless://0b6b6a63-1f7e-4d55-9f43-2c6a8f0b5a11@cdn.example.com:443?security=tls&sni=cdn.example.com&fp=chrome&type=ws&path=%2Fws#Финляндия").let {
+            TunnelProfile(id = "t6", name = it.name, config = it.outbound, kind = "singbox")
+        }
         val data = AppData(
-            tunnels = listOf(direct, viaRelay, fromPanel, panelRelay, panelVless),
+            tunnels = listOf(direct, viaRelay, fromPanel, panelRelay, panelVless, manual),
             traffic = mapOf(
                 "t3" to ConnTraffic(rx = 3_400_000_000, tx = 420_000_000, lastUsed = System.currentTimeMillis() - 5 * 3600_000),
                 "t4" to ConnTraffic(rx = 810_000_000, tx = 95_000_000, lastUsed = System.currentTimeMillis() - 26 * 3600_000),
@@ -123,8 +128,16 @@ class SeededScreenshotTest {
     }
 
     @Test fun picker() {
-        rule.click("Соединение")
+        rule.onAllNodesWithContentDescription("Типы соединения")[0].performClick(); rule.waitForIdle()
         rule.shot("04_connection_picker")
+    }
+
+
+    @Test fun manualConnection() {
+        rule.click("Финляндия")
+        rule.onAllNodes(hasScrollAction())[0].performScrollToNode(hasText("Финляндия"))
+        rule.onAllNodesWithContentDescription("Подробнее")[0].performClick(); rule.waitForIdle()
+        rule.shot("14_manual_fields")
     }
 
     @Test fun servers() {

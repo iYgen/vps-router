@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Terminal
@@ -79,8 +80,9 @@ fun StartChoices(nav: NavController, onChosen: () -> Unit = {}) {
     AnimatedVisibility(expanded) {
         Column(Modifier.padding(start = 12.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SubChoice(Icons.Filled.Hub, "Панель VPS Router", "Вход по адресу или QR — подтянутся конфиги всех устройств") { onChosen(); nav.navigate("panel") }
-            SubChoice(Icons.Filled.QrCodeScanner, "Сканировать QR", "Конфиг AmneziaWG / WireGuard или QR панели VPS Router") { importer.scan() }
-            SubChoice(Icons.Filled.ChevronRight, "Файл или текст конфигурации", ".conf из мессенджера или почты") { importer.file() }
+            SubChoice(Icons.Filled.QrCodeScanner, "Сканировать QR", "Ссылка, конфиг AmneziaWG / WireGuard или QR панели") { importer.scan() }
+            SubChoice(Icons.Filled.ContentPaste, "Ссылка, подписка или JSON", "vless://, vmess://, trojan://, ss://, hysteria2://, tuic:// — как в v2rayTun") { importer.paste() }
+            SubChoice(Icons.Filled.ChevronRight, "Файл конфигурации", ".conf или .json из мессенджера или почты") { importer.file() }
             SubChoice(Icons.Filled.Terminal, "VPS по SSH", "Сервер уже настроен — добавить доступ и клиентов") { onChosen(); nav.navigate("wizard") }
         }
     }

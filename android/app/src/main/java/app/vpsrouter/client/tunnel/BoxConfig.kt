@@ -80,7 +80,7 @@ object BoxConfig {
                     put("tag", "tun-in")
                     // IPv6-адрес нужен, чтобы IPv6-трафик тоже шёл в туннель, а не мимо него.
                     putJsonArray("address") { add(JsonPrimitive("172.19.0.1/30")); add(JsonPrimitive("fdfe:dcba:9876::1/126")) }
-                    put("mtu", 1400)
+                    put("mtu", if (s.mtu > 0) s.mtu else 1400)
                     put("auto_route", true)
                     put("strict_route", true)
                     put("stack", "gvisor")
