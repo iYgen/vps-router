@@ -167,6 +167,14 @@ if command -v xray >/dev/null 2>&1 && id xray-xhttp >/dev/null 2>&1 && [ -d "$XR
             XH_PATH=""
         fi
     fi
+    # Формат лога XHTTP-пути: кто, сколько длился запрос, сколько байт, статус апстрима и
+    # номер HTTP/2-соединения (видно переиспользование xmux). Сам секретный путь не пишем.
+    XHTTP_LOGFMT=/etc/nginx/conf.d/vpsrouter-xhttp-log.conf
+    LOGFMT="# managed by vps-router apply-router.sh
+log_format vpsr_xhttp '\$time_iso8601 \$remote_addr \$request_method \$status rt=\$request_time ut=\$upstream_response_time us=\$upstream_status in=\$request_length out=\$bytes_sent conn=\$connection req=\$connection_requests';"
+    if [ "$(cat "$XHTTP_LOGFMT" 2>/dev/null)" != "$LOGFMT" ]; then
+        printf '%s\n' "$LOGFMT" > "$XHTTP_LOGFMT"
+    fi
     if [ -n "$XH_PATH" ] && [ -s "$XRAY_SRC" ]; then
         install -o root -g xray-xhttp -m 640 "$XRAY_SRC" "$XRAY_DIR/config.new.json"
         if runuser -u xray-xhttp -- xray run -test -c "$XRAY_DIR/config.new.json" >/dev/null 2>&1; then
@@ -192,7 +200,7 @@ location ^~ $XH_PATH {
     grpc_read_timeout 1h;
     grpc_send_timeout 1h;
     grpc_socket_keepalive on;
-    access_log off;
+    access_log /var/log/nginx/vpsrouter-xhttp.log vpsr_xhttp;
 }"
     else
         systemctl disable --now xray-xhttp >/dev/null 2>&1 || true
