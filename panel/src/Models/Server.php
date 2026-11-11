@@ -12,7 +12,7 @@ use App\Secrets;
  */
 class Server
 {
-    public const ROLES = ['router', 'exit', 'proxy', 'vpn', 'gateway', 'storage', 'generic'];
+    public const ROLES = ['router', 'exit', 'relay', 'proxy', 'vpn', 'gateway', 'storage', 'generic'];
     public const STATUSES = ['online', 'warning', 'offline', 'unknown', 'maintenance'];
 
     private const PUBLIC_COLUMNS =

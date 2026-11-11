@@ -15,6 +15,7 @@ class Connection
     public const TYPES = [
         'ssh', 'wireguard', 'amneziawg', 'tcp', 'http', 'socks', 'vless', 'shadowsocks',
         'hysteria2', 'tuic', 'trojan', 'generic',
+        'relay', // ретранслятор → роутер: пересылка портов входа (App\Relay)
     ];
 
     /** Типы, которые реально компилируются в рабочий рантайм сегодня. */
@@ -115,5 +116,12 @@ class Connection
                 ExitServer::delete((int) $conn['exit_server_id']);
             }
         });
+    }
+
+    /** Перезаписать JSON-config связи (служебные поля типов без exit_servers, напр. relay). */
+    public static function setConfig(int $id, array $config): void
+    {
+        Database::retry(fn() => Database::get()->prepare('UPDATE connections SET config = ? WHERE id = ?')
+            ->execute([json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $id]));
     }
 }

@@ -16,6 +16,7 @@
   // отрисовки — см. roleLabel()/protoLabel()/STEPS ниже. Здесь только данные.
   const ROLE_CARDS = [
     { value: 'exit', icon: 'door' },
+    { value: 'relay', icon: 'antenna' },
     { value: 'router', icon: 'compass' },
     { value: 'proxy', icon: 'shuffle' },
     { value: 'gateway', icon: 'globe' },
@@ -59,6 +60,7 @@
     globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z"/>',
     lock: '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    antenna: '<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8"/>',
     check: '<path d="M4 12l5 5L20 6"/>',
     x: '<path d="M18 6 6 18M6 6l12 12"/>',
     arrowLeft: '<path d="M19 12H5M11 18l-6-6 6-6"/>',
@@ -103,6 +105,7 @@
       installResult: null,
       selectedRouteIds: [],
       newDestinations: '',
+      relayTargetId: null, // профиль «Ретранслятор»: роутер, в который пересылать
     };
     stepIndex = 0;
     const el = ensureOverlay();
@@ -212,6 +215,8 @@
     content.querySelectorAll('[data-role]').forEach((card) => {
       card.addEventListener('click', () => {
         state.server.role = card.dataset.role;
+        if (state.server.role === 'relay') state.protocol = 'relay';
+        else if (state.protocol === 'relay') state.protocol = 'vless';
         content.querySelectorAll('[data-role]').forEach((c) => c.classList.toggle('selected', c === card));
       });
     });
@@ -342,6 +347,7 @@
 
   // ---------------------------------------------------------------- 03 --
   function renderProtocol() {
+    if (state.server.role === 'relay') { renderRelayTarget(); return; }
     const content = document.getElementById('wz-step-content');
     content.innerHTML = `
       ${stepHeading(T('js.wz.step_protocol'), T('js.wz.p_head_desc', esc(state.server.name)))}
@@ -407,6 +413,45 @@
     } });
   }
 
+  // Профиль «Ретранслятор»: вместо протокола — роутер, на который пересылать порты.
+  function routerCandidates() {
+    return P().getState().servers.filter((s) => s.is_self || s.role === 'router');
+  }
+  function renderRelayTarget() {
+    const content = document.getElementById('wz-step-content');
+    const routers = routerCandidates();
+    if (!state.relayTargetId && routers.length) {
+      const self = routers.find((s) => s.is_self);
+      state.relayTargetId = (self || routers[0]).id;
+    }
+    content.innerHTML = `
+      ${stepHeading(T('js.wz.rl_head'), T('js.wz.rl_head_desc', esc(state.server.name)))}
+      <div class="wizard-protocol-list">
+        ${routers.map((r) => `
+          <div class="wizard-protocol-card ${state.relayTargetId === r.id ? 'selected' : ''}" data-relay-target="${r.id}">
+            <div class="row" style="justify-content:space-between"><strong>${esc(r.name)}</strong>${r.is_self ? `<span class="badge ok">${esc(T('js.wz.rl_self'))}</span>` : ''}</div>
+            <div class="muted" style="font-size:12.5px;margin-top:4px">${esc(r.host || '')}</div>
+          </div>`).join('')}
+      </div>
+      ${routers.length ? '' : `<div class="flash error">${esc(T('js.wz.rl_no_router'))}</div>`}
+      <p class="muted" style="margin-top:14px;font-size:12.5px">${esc(T('js.wz.rl_note'))}</p>
+    `;
+    content.querySelectorAll('[data-relay-target]').forEach((card) => {
+      card.addEventListener('click', () => {
+        state.relayTargetId = Number(card.dataset.relayTarget);
+        content.querySelectorAll('[data-relay-target]').forEach((c) => c.classList.toggle('selected', c === card));
+      });
+    });
+    footer(T('js.wz.back'), T('js.wz.next'), { onNext: () => {
+      if (!state.relayTargetId) { P().toast(T('js.wz.rl_no_router'), 'error'); return; }
+      next();
+    } });
+  }
+  function relayTargetName() {
+    const r = P().getState().servers.find((s) => s.id === state.relayTargetId);
+    return r ? r.name : '—';
+  }
+
   // ---------------------------------------------------------------- 04 --
   function renderReview() {
     const content = document.getElementById('wz-step-content');
@@ -419,7 +464,7 @@
         <div><div class="muted">${esc(T('js.wz.r_role'))}</div><strong>${esc(roleLabel(state.server.role))}</strong></div>
         <div><div class="muted">${esc(T('js.wz.r_host'))}</div><strong>${esc(state.server.host)}</strong></div>
         <div><div class="muted">${esc(T('js.wz.r_ssh'))}</div><strong>${esc(state.server.ssh_user)}@${esc(state.server.host)}:${state.server.ssh_port} ${esc(sshSuffix)}</strong></div>
-        <div><div class="muted">${esc(T('js.wz.r_protocol'))}</div><strong>${esc(protoLabel(state.protocol))}</strong></div>
+        <div><div class="muted">${esc(T('js.wz.r_protocol'))}</div><strong>${esc(protoLabel(state.protocol))}${state.protocol === 'relay' ? ' → ' + esc(relayTargetName()) : ''}</strong></div>
         ${state.domain ? `<div><div class="muted">${esc(T('js.wz.r_domain'))}</div><strong>${esc(state.domain)}</strong></div>` : ''}
         ${state.protocol === 'vless' && state.camouflage.domain ? `<div><div class="muted">${esc(T('js.wz.r_camo'))}</div><strong>${esc(state.camouflage.domain)}${state.camouflage.preset ? esc(T('js.wz.r_camo_cover')) : ''}</strong></div>` : ''}
       </div>
@@ -465,7 +510,10 @@
       const selfServer = panel.getState().servers.find((s) => s.is_self);
       if (!selfServer) throw new Error(T('js.wz.c_no_self'));
 
-      const body = { source_server_id: selfServer.id, target_server_id: target.id, type: state.protocol, label: null };
+      // Ретранслятор — связь ОТ нового узла К роутеру; остальные — от входного узла к новому.
+      const body = state.protocol === 'relay'
+        ? { source_server_id: target.id, target_server_id: state.relayTargetId, type: 'relay', label: null }
+        : { source_server_id: selfServer.id, target_server_id: target.id, type: state.protocol, label: null };
       if (state.protocol === 'amneziawg' || state.protocol === 'wireguard') {
         body.wireguard = { endpoint_host: state.server.host, endpoint_port: state.protocol === 'amneziawg' ? 51900 : 51820 };
       } else if (state.protocol === 'vless') {
@@ -535,6 +583,11 @@
   // ---------------------------------------------------------------- 06 --
   function renderRoutes() {
     const content = document.getElementById('wz-step-content');
+    if (state.protocol === 'relay') {
+      content.innerHTML = `${stepHeading(T('js.wz.rl_done_head'), '')}<p>${esc(T('js.wz.rl_done_desc', state.server.name))}</p>`;
+      footer(T('js.wz.back'), T('js.wz.next'));
+      return;
+    }
     const bulkCount = state.newDestinations.split('\n').map((s) => s.trim()).filter(Boolean).length;
     content.innerHTML = `
       ${stepHeading(T('js.wz.step_routes'), T('js.wz.ro_head_desc', esc(state.server.name)))}

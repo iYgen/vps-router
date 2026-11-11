@@ -240,7 +240,7 @@ View::routerScopeBar();
   <div class="dev-list">
   <?php foreach ($clients as $c): ?>
     <?php
-      $configs = $c['revoked'] ? [] : DeviceInbounds::clientConfigs($c);
+      $configs = $c['revoked'] ? [] : DeviceInbounds::allConfigs($c);
       $t = $totals['c' . $c['id']] ?? null;
       $hosts = $t ? \App\TrafficCollector::deviceHosts('c' . $c['id'], 30, 30) : [];
       $total = $t ? fmtBytes(($t['total_down'] ?? 0) + ($t['total_up'] ?? 0)) : '—';
@@ -288,19 +288,29 @@ View::routerScopeBar();
         <?php if (!$c['revoked'] && !$configs): ?>
           <p class="muted"><?= htmlspecialchars(t('devices.no_proto')) ?></p>
         <?php endif; ?>
+        <?php if (!$c['revoked'] && $configs): ?>
+          <?php $subUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/sub.php?id=' . (int) $c['id'] . '&t=' . DeviceInbounds::subToken($c); ?>
+          <div class="proto-line">
+            <span class="proto-name"><b><?= htmlspecialchars(t('devices.sub')) ?></b> <span class="muted" style="font-size:12px"><?= htmlspecialchars(t('devices.sub_hint')) ?></span></span>
+            <button class="iconbtn" type="button" data-copy="sub-<?= (int) $c['id'] ?>" title="<?= htmlspecialchars(t('devices.act.copy')) ?>"><?= di('copy') ?></button>
+            <code id="sub-<?= (int) $c['id'] ?>" class="hidden"><?= htmlspecialchars($subUrl) ?></code>
+            <button class="iconbtn" type="button" data-qr-text="sub-<?= (int) $c['id'] ?>" title="<?= htmlspecialchars(t('devices.act.qr')) ?>"><?= di('qr') ?></button>
+          </div>
+          <div id="qrt-wrap-sub-<?= (int) $c['id'] ?>" class="hidden" style="margin:4px 0 8px"><div id="qrt-sub-<?= (int) $c['id'] ?>" style="background:#fff;display:inline-block;padding:10px;border-radius:8px"></div></div>
+        <?php endif; ?>
         <?php foreach ($configs as $proto => $cfg): ?>
-          <?php $key = (int) $c['id'] . '-' . $proto; ?>
+          <?php $key = (int) $c['id'] . '-' . str_replace('@', '-r', $proto); ?>
           <div class="proto-line">
             <span class="proto-name"><b><?= htmlspecialchars($cfg['label']) ?></b></span>
             <?php if ($cfg['uri']): ?>
               <button class="iconbtn" type="button" data-copy="cfg-<?= $key ?>" title="<?= htmlspecialchars(t('devices.act.copy')) ?>"><?= di('copy') ?></button>
               <code id="cfg-<?= $key ?>" class="hidden"><?= htmlspecialchars($cfg['uri']) ?></code>
             <?php endif; ?>
-            <a class="iconbtn" href="/device-config.php?id=<?= (int)$c['id'] ?>&format=<?= $proto ?>" title="Скачать <?= $cfg['file'] ? '.conf' : '.txt' ?>"><?= di('download') ?></a>
+            <a class="iconbtn" href="/device-config.php?id=<?= (int)$c['id'] ?>&format=<?= rawurlencode($proto) ?>" title="Скачать <?= $cfg['file'] ? '.conf' : '.txt' ?>"><?= di('download') ?></a>
             <?php if ($proto === 'vless'): ?>
               <a class="iconbtn" href="/device-config.php?id=<?= (int)$c['id'] ?>&format=singbox" title="<?= htmlspecialchars(t('devices.act.json')) ?>"><?= di('json') ?></a>
             <?php endif; ?>
-            <button class="iconbtn" type="button" data-show-qr-cfg="<?= $key ?>" data-url="/device-config.php?id=<?= (int)$c['id'] ?>&format=<?= $proto ?>&inline=1" title="<?= htmlspecialchars(t('devices.act.qr')) ?>"><?= di('qr') ?></button>
+            <button class="iconbtn" type="button" data-show-qr-cfg="<?= $key ?>" data-url="/device-config.php?id=<?= (int)$c['id'] ?>&format=<?= rawurlencode($proto) ?>&inline=1" title="<?= htmlspecialchars(t('devices.act.qr')) ?>"><?= di('qr') ?></button>
           </div>
           <div id="qr-cfg-wrap-<?= $key ?>" class="hidden" style="margin:4px 0 8px">
             <div id="qr-cfg-<?= $key ?>" style="background:#fff;display:inline-block;padding:10px;border-radius:8px"></div>
@@ -386,6 +396,21 @@ View::routerScopeBar();
       });
     });
   }
+  // QR прямо из текста на странице (ссылка-подписка).
+  document.querySelectorAll('[data-qr-text]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.dataset.qrText;
+      var wrap = document.getElementById('qrt-wrap-' + id);
+      var target = document.getElementById('qrt-' + id);
+      if (!wrap.classList.contains('hidden')) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      if (target.innerHTML) return;
+      var qr = qrcode(0, 'M');
+      qr.addData(document.getElementById(id).textContent);
+      qr.make();
+      target.innerHTML = qr.createSvgTag(4);
+    });
+  });
   wireQrButtons('[data-show-qr-wg]', 'showQrWg', '/wg-peer-config.php?id=', 'qr-wg-wrap-', 'qr-wg-');
 
   document.querySelectorAll('[data-copy]').forEach(function (btn) {

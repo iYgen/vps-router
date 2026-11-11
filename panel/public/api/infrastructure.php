@@ -51,6 +51,15 @@ try {
 
         $connections = Connection::all();
         foreach ($connections as &$c) {
+            if ($c['type'] === 'relay') {
+                $rc = json_decode((string) ($c['config'] ?? ''), true) ?: [];
+                $c['provision_status'] = $rc['provision_status'] ?? 'not_provisioned';
+                $c['last_provision_at'] = $rc['last_provision_at'] ?? null;
+                $c['last_provision_log'] = $rc['last_provision_log'] ?? null;
+                $c['relay_ports'] = $rc['ports'] ?? [];
+                $c['relay_target_ip'] = $rc['target_ip'] ?? null;
+                continue;
+            }
             if (empty($c['exit_server_id'])) {
                 continue;
             }
@@ -86,7 +95,7 @@ try {
             'connections' => $connections,
             'server_sets' => ServerSet::all(),
             'routes' => $routes,
-            'executable_connection_types' => Connection::EXECUTABLE_TYPES,
+            'executable_connection_types' => array_merge(Connection::EXECUTABLE_TYPES, ['relay']),
         ]);
     }
 

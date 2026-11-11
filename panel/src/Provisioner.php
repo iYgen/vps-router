@@ -24,7 +24,7 @@ class Provisioner
      * только содержимое panel/, а не весь репозиторий), поэтому путь берём
      * из config.php с fallback на репозиторий для локальной разработки/тестов.
      */
-    private static function scriptsDir(): string
+    public static function scriptsDir(): string
     {
         return App::config()['provision_scripts_dir'] ?? (__DIR__ . '/../../deploy/provision');
     }

@@ -590,13 +590,15 @@ class DeviceInbounds
      *
      * @return array<string,array{label:string,uri:?string,file:?string,filename:string,qr:string,hint:string}>
      */
-    public static function clientConfigs(array $client): array
+    public static function clientConfigs(array $client, ?array $via = null): array
     {
-        $host = self::publicHost();
+        // $via — ретранслятор (App\Relay::activeVia): тот же вход, но адрес подключения —
+        // адрес ретранслятора; ключи/SNI/путь не меняются (трафик доходит до этого же роутера).
+        $host = $via ? $via['host'] : self::publicHost();
         if (!$host) {
             return [];
         }
-        $name = (string) $client['name'];
+        $name = (string) $client['name'] . ($via ? ' via ' . $via['name'] : '');
         $safe = preg_replace('/[^A-Za-z0-9_\-]+/', '_', $name) ?: 'device';
         $out = [];
 
@@ -638,7 +640,7 @@ class DeviceInbounds
                     if ($extra = self::xhttpExtra()) {
                         $q['extra'] = json_encode($extra, JSON_UNESCAPED_SLASHES);
                     }
-                    $uri = 'vless://' . $client['uuid'] . '@' . $xh . ':' . $port . '?'
+                    $uri = 'vless://' . $client['uuid'] . '@' . self::uriHost($via ? $host : $xh) . ':' . $port . '?'
                         . http_build_query($q, '', '&', PHP_QUERY_RFC3986) . '#' . rawurlencode($name . ' XHTTP');
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-xhttp.txt");
                     break;
@@ -712,12 +714,47 @@ class DeviceInbounds
                     );
                     $conf = implode("\n", $lines) . "\n";
                     // Имя файла = имя туннеля в приложении: только [A-Za-z0-9_=+.-], до 15 символов.
-                    $tunnel = substr(($protocol === 'amneziawg' ? 'awg-' : 'wg-') . $safe, 0, 15);
+                    $tunnel = substr(($protocol === 'amneziawg' ? 'awg-' : 'wg-') . ($via ? 'r' . $via['id'] . '-' : '') . preg_replace('/[^A-Za-z0-9_\-]+/', '_', (string) $client['name']), 0, 15);
                     $out[$protocol] = self::entry($label, null, $conf, "$tunnel.conf");
                     break;
             }
         }
         return $out;
+    }
+
+    /**
+     * Все конфиги устройства: прямые + через каждый настроенный ретранслятор
+     * текущего роутера. Ключи: "<протокол>" и "<протокол>@<id связи-ретранслятора>".
+     *
+     * @return array<string,array> как clientConfigs(), плюс 'via' => ['id','name','host'] у ретрансляторных
+     */
+    public static function allConfigs(array $client): array
+    {
+        $out = self::clientConfigs($client);
+        foreach (Relay::activeVia(self::$ctxRouter) as $via) {
+            foreach (self::clientConfigs($client, $via) as $proto => $entry) {
+                $entry['label'] .= ' · ' . $via['name'];
+                $entry['via'] = $via;
+                $out[$proto . '@' . $via['id']] = $entry;
+            }
+        }
+        return $out;
+    }
+
+    /** Секретный токен ссылки-подписки устройства (public/sub.php). Меняется вместе с uuid. */
+    public static function subToken(array $client): string
+    {
+        $secret = (string) (App::config()['app_secret'] ?? '');
+        return substr(hash_hmac('sha256', 'sub|' . $client['uuid'], $secret), 0, 32);
+    }
+
+    /** "<протокол>[@<relay>]" → [протокол, id связи|null]; null, если формат чужой. */
+    public static function parseConfigKey(string $key): ?array
+    {
+        if (!preg_match('/^([a-z0-9]+)(?:@([0-9]{1,9}))?$/', $key, $m) || !isset(self::PROTOCOLS[$m[1]])) {
+            return null;
+        }
+        return [$m[1], isset($m[2]) ? (int) $m[2] : null];
     }
 
     public static function tunnelAddress(string $protocol, int $clientId): string

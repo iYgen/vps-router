@@ -105,6 +105,7 @@
   const ROLE_META = {
     router: { icon: '🧭', color: '#8b7cff' },
     exit: { icon: '🚪', color: '#35d07f' },
+    relay: { icon: '📡', color: '#2bc6c6' },
     proxy: { icon: '🔀', color: '#8b7cff' },
     vpn: { icon: '🔒', color: '#5b9cff' },
     gateway: { icon: '🌐', color: '#f5b942' },
@@ -120,6 +121,7 @@
     amneziawg: '#ff4f87', wireguard: '#ff4f87',
     vless: '#8b7cff', hysteria2: '#8b7cff', tuic: '#8b7cff', trojan: '#8b7cff',
     shadowsocks: '#5b9cff',
+    relay: '#2bc6c6',
     ssh: '#71717a', tcp: '#71717a', http: '#71717a', socks: '#71717a', generic: '#71717a',
   };
   function EDGE_COLOR_FN(ele) {
@@ -2004,6 +2006,8 @@
         ${conn.exit_source === 'free' ? `<div class="flash error" style="margin-bottom:10px">${T('js.g.free_exit_warn')}</div>` : ''}
         <div class="field-row"><label>${T('js.g.type_label')}</label>${escapeHtml(conn.type)}${conn.exit_source === 'free' ? ` <span class="badge unknown">${T('js.g.free_badge')}${conn.exit_country ? ' ' + escapeHtml(conn.exit_country) : ''}</span>` : ''}</div>
         <div class="field-row"><label>Label</label>${escapeHtml(conn.label || '—')}</div>
+        ${conn.type === 'relay' ? `<p class="muted" style="margin:6px 0">${T('js.g.relay_inspector')}</p>
+          <div class="field-row"><label>${T('js.g.relay_ports')}</label>${conn.relay_ports && conn.relay_ports.length ? escapeHtml(conn.relay_ports.join(', ')) + (conn.relay_target_ip ? ' → ' + escapeHtml(conn.relay_target_ip) : '') : '—'}</div>` : ''}
         ${isExecutable ? `
           <div class="field-row"><label>${T('js.g.provisioning_label')}</label>
             <span class="badge ${provisionMeta.cls}">${provisionMeta.label}</span>
@@ -2376,6 +2380,7 @@
   const ROLE_LABELS = {
     router: { label: T('js.g.role_router'), help: T('js.g.role_router_h') },
     exit: { label: T('js.g.role_exit'), help: T('js.g.role_exit_h') },
+    relay: { label: T('js.g.role_relay'), help: T('js.g.role_relay_h') },
     proxy: { label: T('js.g.role_proxy'), help: T('js.g.role_proxy_h') },
     vpn: { label: T('js.g.role_vpn'), help: T('js.g.role_vpn_h') },
     gateway: { label: T('js.g.role_gateway'), help: T('js.g.role_gateway_h') },
@@ -2384,7 +2389,7 @@
   };
 
   function renderServerForm(server) {
-    const roles = ['router', 'exit', 'proxy', 'vpn', 'gateway', 'storage', 'generic'];
+    const roles = ['router', 'exit', 'relay', 'proxy', 'vpn', 'gateway', 'storage', 'generic'];
     openModal(`
       <h3>${server ? T('js.g.edit_server') : T('js.g.add_server_modal')}</h3>
       <form id="server-form">
@@ -2559,6 +2564,7 @@
       <form id="conn-form">
         <div class="field-row"><label>${T('js.g.type_label')}</label>
           <select name="type" id="conn-type">
+            <option value="relay">${T('js.g.conn_relay')}</option>
             <option value="amneziawg">AmneziaWG</option>
             <option value="wireguard">${T('js.g.wg_plain')}</option>
             <option value="vless">VLESS (Reality / gRPC / WS)</option>
@@ -2586,6 +2592,11 @@
 
     const typeFields = document.getElementById('conn-type-fields');
     function renderTypeFields(type) {
+      if (type === 'relay') {
+        typeFields.innerHTML = `<p class="muted">${T('js.g.relay_conn_help', escapeHtml(source.name), escapeHtml(target.name), escapeHtml(source.name))}</p>`
+          + (target.role !== 'router' && !target.is_self ? `<div class="flash error">${T('js.g.relay_need_router')}</div>` : '');
+        return;
+      }
       if (type === 'amneziawg') {
         typeFields.innerHTML = `
           ${draftNote}
@@ -2717,7 +2728,9 @@
       }
     }
     document.getElementById('conn-type').addEventListener('change', (e) => renderTypeFields(e.target.value));
-    renderTypeFields('amneziawg');
+    const initialType = source.role === 'relay' ? 'relay' : 'amneziawg';
+    document.getElementById('conn-type').value = initialType;
+    renderTypeFields(initialType);
 
     const form = document.getElementById('conn-form');
     form.querySelector('[data-cancel]').addEventListener('click', closeModal);

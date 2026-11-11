@@ -74,10 +74,22 @@ class Applier
         $isSelf = $routerServerId === null
             || ($self !== null && (int) $self['id'] === $routerServerId);
 
-        if ($isSelf) {
-            return $this->applyLocal($username, $description);
+        $result = $isSelf
+            ? $this->applyLocal($username, $description)
+            : $this->applyRemote($routerServerId, $username, $description);
+
+        // Ретрансляторы этого роутера: если сменились порты входов/адрес — перенастроить.
+        if (($result['exit_code'] ?? 1) === 0) {
+            try {
+                $lines = Relay::syncChanged($isSelf ? null : $routerServerId);
+            } catch (\Throwable $e) {
+                $lines = ['relay: ' . $e->getMessage()];
+            }
+            if ($lines) {
+                $result['stdout'] = rtrim((string) ($result['stdout'] ?? '')) . "\n" . implode("\n", $lines) . "\n";
+            }
         }
-        return $this->applyRemote($routerServerId, $username, $description);
+        return $result;
     }
 
     private function applyLocal(string $username, string $description): array

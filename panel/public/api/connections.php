@@ -56,7 +56,7 @@ try {
             Http::error('id обязателен');
         }
         $conn = Connection::find($id) ?? Http::error('Соединение не найдено', 404);
-        $result = Provisioner::provisionConnection($id);
+        $result = $conn['type'] === 'relay' ? \App\Relay::sync($id) : Provisioner::provisionConnection($id);
         AuditLog::record('connection.provision', "id=$id type={$conn['type']}: " . ($result['ok'] ? 'ok' : 'failed'));
         Http::json($result);
     }
@@ -93,6 +93,14 @@ try {
             Http::error('Неизвестный тип соединения', 422);
         }
 
+        if ($type === 'relay') {
+            // Ретранслятор ведёт В роутер (входной узел) — с него и берутся порты для пересылки.
+            $t = Server::find($targetId);
+            if (($t['role'] ?? '') !== 'router' && empty($t['is_self'])) {
+                Http::error('Связь-ретранслятор ведётся от ретранслятора к роутеру (входному узлу)', 422);
+            }
+        }
+
         $exitServerId = null;
         if (in_array($type, Connection::EXECUTABLE_TYPES, true)) {
             $target = Server::find($targetId);
@@ -111,6 +119,14 @@ try {
     if ($method === 'DELETE') {
         if (!$id) {
             Http::error('id обязателен');
+        }
+        $doomed = Connection::find($id);
+        if ($doomed && $doomed['type'] === 'relay') {
+            // Снять пересылку на узле (best effort: узел может быть уже недоступен).
+            try {
+                \App\Relay::sync($id, true);
+            } catch (\Throwable $e) {
+            }
         }
         Connection::delete($id);
         AuditLog::record('connection.delete', "id=$id");

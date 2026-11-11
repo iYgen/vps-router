@@ -25,7 +25,8 @@ Auth::requireLogin();
 
 $id = (int) ($_GET['id'] ?? 0);
 $format = $_GET['format'] ?? 'uri';
-if (!in_array($format, ['uri', 'singbox'], true) && !isset(DeviceInbounds::PROTOCOLS[$format])) {
+$parsed = DeviceInbounds::parseConfigKey($format); // "<протокол>" или "<протокол>@<ретранслятор>"
+if (!in_array($format, ['uri', 'singbox'], true) && !$parsed) {
     http_response_code(400);
     die('Неизвестный формат');
 }
@@ -41,11 +42,14 @@ if ($client['revoked']) {
     die('Устройство отозвано — конфиг больше не действителен. Разрешите его на странице «Устройства», если это ошибка.');
 }
 
-if (isset(DeviceInbounds::PROTOCOLS[$format])) {
-    $configs = DeviceInbounds::clientConfigs($client);
+if ($parsed) {
+    // Контекст настроек — роутер устройства (self = глобальные настройки).
+    $rid = $client['router_server_id'] ?? null;
+    DeviceInbounds::useRouter($rid !== null && !\App\RouterContext::isSelf((int) $rid) ? (int) $rid : null);
+    $configs = DeviceInbounds::allConfigs($client);
     if (!isset($configs[$format])) {
         http_response_code(422);
-        die('Протокол «' . DeviceInbounds::PROTOCOLS[$format]['label'] . '» выключен или ещё не настроен (Настройки → «Протоколы подключения устройств»).');
+        die('Протокол «' . DeviceInbounds::PROTOCOLS[$parsed[0]]['label'] . '»' . ($parsed[1] ? ' через этот ретранслятор' : '') . ' выключен или ещё не настроен (Настройки → «Протоколы подключения устройств»; Инфраструктура → связь-ретранслятор).');
     }
     $entry = $configs[$format];
     $body = $entry['uri'] ?? $entry['file'];
