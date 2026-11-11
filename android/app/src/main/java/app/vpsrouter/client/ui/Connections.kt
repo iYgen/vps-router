@@ -54,6 +54,7 @@ import androidx.navigation.NavController
 import app.vpsrouter.client.App
 import app.vpsrouter.client.data.AppData
 import app.vpsrouter.client.data.TunnelProfile
+import app.vpsrouter.client.data.isSingbox
 import app.vpsrouter.client.panel.PanelClient
 import app.vpsrouter.client.panel.PanelState
 import kotlinx.coroutines.launch
@@ -65,20 +66,31 @@ data class ConnGroup(val key: String, val title: String, val items: List<TunnelP
 /** Тип соединения внутри группы: «Без ретранслятора · AmneziaWG» / «Через <ретранслятор> · VLESS+Reality». */
 fun connKind(t: TunnelProfile): String {
     val fmt = if (t.source == "panel") t.origin?.split(':')?.getOrNull(2)?.substringBefore('@') else null
-    val proto = when {
-        fmt != null -> PanelClient.formatLabel(fmt)
-        Regex("""(?m)^\s*Jc\s*=""").containsMatchIn(t.config) -> "AmneziaWG"
-        else -> "WireGuard"
-    }
+    val proto = protoOf(t, fmt)
+    // Добавлено вручную — ретрансляторов нет, показываем просто протокол.
+    if (t.source != "panel" && t.source != "local") return proto
     // «Без ретранслятора» — прямо к серверу VPS Router; трафик всё равно идёт по маршрутам панели.
     return if (t.via != null) "Через ${t.via} · $proto" else "Без ретранслятора · $proto"
 }
 
-private fun groupKey(t: TunnelProfile): String = when (t.source) {
+/** Протокол соединения: «AmneziaWG», «VLESS+Reality», «Hysteria2»… */
+fun protoOf(t: TunnelProfile, panelFormat: String? = null): String = when {
+    panelFormat != null -> PanelClient.formatLabel(panelFormat)
+    t.isSingbox -> app.vpsrouter.client.tunnel.ShareLinks.protocolOf(t.config)
+    Regex("""(?m)^\s*Jc\s*=""").containsMatchIn(t.config) -> "AmneziaWG"
+    else -> "WireGuard"
+}
+
+fun groupKey(t: TunnelProfile): String = when (t.source) {
     "panel" -> "panel:" + (t.origin?.split(':')?.getOrNull(1) ?: "?")
     "local" -> "local:" + (t.origin ?: t.id)
-    else -> "import"
+    // Каждое добавленное вручную соединение — отдельный сервер в списке.
+    else -> "own:" + t.id
 }
+
+/** Какой тип соединения сервера выбран: сохранённый, иначе первый (без ретранслятора). */
+fun groupDefault(g: ConnGroup, d: AppData): TunnelProfile =
+    g.items.firstOrNull { it.id == d.lastTunnelId } ?: g.items.firstOrNull { it.id == d.groupDefaults[g.key] } ?: g.items.first()
 
 fun connectionGroups(d: AppData): List<ConnGroup> {
     val my = d.panel?.myDeviceId
@@ -89,10 +101,10 @@ fun connectionGroups(d: AppData): List<ConnGroup> {
             k.startsWith("panel:") -> {
                 val id = k.removePrefix("panel:").toIntOrNull()
                 val name = d.panelCache.devices.firstOrNull { it.id == id }?.name ?: sorted.first().name.substringBefore(" ⇢ ")
-                "VPS Router · $name" + if (id != null && id == my) " (этот телефон)" else ""
+                if (id != null && id == my) "VPS Router" else "VPS Router · $name"
             }
-            k.startsWith("local:") -> "Свой сервер · " + sorted.first().name.substringBefore(" ⇢ ")
-            else -> "Импортированные"
+            k.startsWith("local:") -> sorted.first().name.substringBefore(" ⇢ ")
+            else -> sorted.first().name
         }
         ConnGroup(k, title, sorted)
     }.sortedBy { g -> when { g.key == "panel:$my" -> 0; g.key.startsWith("panel:") -> 1; g.key.startsWith("local:") -> 2; else -> 3 } }

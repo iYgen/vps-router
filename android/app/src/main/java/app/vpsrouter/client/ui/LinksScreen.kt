@@ -202,7 +202,7 @@ fun LinksScreen(nav: NavController) {
                         Column(Modifier.fillMaxWidth().clickable { nav.navigate("tunnel/${t.id}") }.padding(vertical = 6.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Dot(if (active) Pal.ok else Pal.surface2, 9); Spacer(Modifier.width(8.dp))
-                                Text(if (g.key == "import") t.name else connKind(t), fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(connKind(t), fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(formatBytes(sum), fontSize = 13.sp, color = if (sum > 0) Pal.text else Pal.muted)
                             }
                             Box(Modifier.padding(start = 17.dp, top = 4.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Pal.surface2)) {

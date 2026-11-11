@@ -160,6 +160,8 @@ data class AppSettings(
     val consentVersion: Int = 0,
     /** Проверять обновления приложения в GitHub (сетевой запрос к github.com). */
     val githubUpdates: Boolean = true,
+    /** MTU туннеля; 0 — автоматически (из конфига, для sing-box — 1400). */
+    val mtu: Int = 0,
 )
 
 /** Маршрут (группа правил) панели VPS Router: что и через какой выход идёт на сервере. */
@@ -227,6 +229,8 @@ data class AppData(
     val settings: AppSettings = AppSettings(),
     /** Трафик по соединениям, посчитанный на телефоне: id туннеля → итоги. */
     val traffic: Map<String, ConnTraffic> = emptyMap(),
+    /** Выбранный тип соединения для каждого сервера на главной: ключ группы → id туннеля. */
+    val groupDefaults: Map<String, String> = emptyMap(),
 )
 
 @Serializable

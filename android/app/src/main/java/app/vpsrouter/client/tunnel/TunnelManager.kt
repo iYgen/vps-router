@@ -46,7 +46,8 @@ data class TunnelStatus(
  */
 class TunnelManager(private val context: Context, private val repo: Repository) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val backend by lazy { GoBackend(context.applicationContext) }
+    private val backendLazy = lazy { GoBackend(context.applicationContext) }
+    private val backend by backendLazy
     private val mutex = Mutex()
     private val _status = MutableStateFlow(TunnelStatus())
     val status: StateFlow<TunnelStatus> = _status.asStateFlow()
@@ -82,7 +83,8 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
 
     private var current: AppTunnel? = null
 
-    fun backendVersion(): String = runCatching { backend.version }.getOrDefault("?")
+    /** Версия AmneziaWG — только если ядро уже загружено (загружать его ради надписи нельзя). */
+    fun backendVersion(): String = if (backendLazy.isInitialized()) runCatching { backend.version }.getOrDefault("?") else "загрузится при подключении"
 
     suspend fun toggle(profile: TunnelProfile) {
         if (_status.value.activeId == profile.id && _status.value.state == Tunnel.State.UP) stop() else start(profile)

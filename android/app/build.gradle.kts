@@ -18,9 +18,11 @@ android {
         targetSdk = 35
         // Версия приложения. При каждом выпуске увеличивайте versionCode — по нему
         // приложение и панель понимают, что есть обновление.
-        versionCode = 8
-        versionName = "0.5.0"
+        versionCode = 9
+        versionName = "0.5.1"
         // Откуда приложение само скачивает обновления (без панели): каталог panel/app/ в репозитории.
+        // Версии ядер в libs/libbox.aar (см. core/README.md) — для экрана «О приложении», без загрузки ядра.
+        buildConfigField("String", "CORE_VERSIONS", "\"sing-box 1.14.4 / Xray 26.3.27\"")
         buildConfigField("String", "UPDATE_RAW_URL", "\"https://raw.githubusercontent.com/iYgen/vps-router/main/panel/app/\"")
     }
 

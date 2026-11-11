@@ -158,8 +158,10 @@ fun SettingsScreen(nav: NavController) {
             SectionCard {
                 Text("О приложении", fontWeight = FontWeight.SemiBold, color = Pal.accent2)
                 Row2("Версия", BuildConfig.VERSION_NAME)
+                // Версии ядер не спрашиваем у нативных библиотек: их загрузка в главном потоке
+                // подвешивала экран и роняла приложение (два Go-ядра в одном процессе).
                 Row2("AmneziaWG", app.tunnels.backendVersion())
-                Row2("sing-box / Xray", BoxVpnService.version() + " / " + BoxVpnService.xrayVersion())
+                Row2("Ядра", BuildConfig.CORE_VERSIONS)
                 Row2("Туннелей / серверов", "${data.tunnels.size} / ${data.servers.size}")
             }
             Spacer(Modifier.height(24.dp))
