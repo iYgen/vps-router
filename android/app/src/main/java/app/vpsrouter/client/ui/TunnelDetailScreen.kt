@@ -81,7 +81,7 @@ fun TunnelDetailScreen(id: String, nav: NavController) {
             SectionCard {
                 Field(name, { name = it }, "Название")
                 (if (t.isSingbox) BoxConfig.endpointOf(t.config) else AwgFactory.endpointOf(t.config))?.let { (h, p) -> Row2("Сервер", "$h:$p") }
-                Row2("Протокол", connKind(t).substringAfter("· ", connKind(t)) + if (t.isSingbox) " · ядро sing-box" else "")
+                Row2("Протокол", connKind(t).substringAfter("· ", connKind(t)) + when { !t.isSingbox -> ""; BoxConfig.isXray(t.config) -> " · ядро Xray"; else -> " · ядро sing-box" })
                 Row2("Источник", when (t.source) { "panel" -> "панель VPS Router"; "local" -> "свой сервер"; else -> "импорт" })
                 t.via?.let { Row2("Ретранслятор", it) }
                 val parsed = remember(t.config) { if (t.isSingbox) null else runCatching { TunnelManager.parseConfig(t.config) }.getOrNull() }

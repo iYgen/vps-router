@@ -18,8 +18,8 @@ android {
         targetSdk = 35
         // Версия приложения. При каждом выпуске увеличивайте versionCode — по нему
         // приложение и панель понимают, что есть обновление.
-        versionCode = 7
-        versionName = "0.4.2"
+        versionCode = 8
+        versionName = "0.5.0"
         // Откуда приложение само скачивает обновления (без панели): каталог panel/app/ в репозитории.
         buildConfigField("String", "UPDATE_RAW_URL", "\"https://raw.githubusercontent.com/iYgen/vps-router/main/panel/app/\"")
     }
@@ -81,7 +81,7 @@ android {
 
 dependencies {
     implementation(project(":tunnel"))
-    // Ядро sing-box (libbox, собрано gomobile из sing-box 1.14.4): VLESS, Hysteria2, Trojan, Shadowsocks.
+    // Ядро sing-box 1.14.4 + Xray 26.3.27 (одна gomobile-библиотека, см. core/README.md).
     implementation(files("libs/libbox.aar"))
 
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")

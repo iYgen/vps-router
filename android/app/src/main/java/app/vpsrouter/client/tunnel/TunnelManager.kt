@@ -96,14 +96,21 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                 flushTraffic(); savedRx = 0; savedTx = 0
                 val t = AppTunnel(profile.id, profile.isSingbox)
                 if (profile.isSingbox) {
-                    val cfg = BoxConfig.build(profile.config, settings)
+                    // VLESS+XHTTP ведёт ядро Xray: sing-box держит TUN и отдаёт трафик в его локальный вход.
+                    val bridge = if (BoxConfig.isXray(profile.config)) BoxConfig.XrayBridge(
+                        port = runCatching { io.nekohasekai.libbox.Libbox.availablePort(10808) }.getOrDefault(10808),
+                        user = java.util.UUID.randomUUID().toString(), pass = java.util.UUID.randomUUID().toString(),
+                    ) else null
+                    val xcfg = bridge?.let { BoxConfig.xrayConfig(profile.config, it) }
+                    val cfg = BoxConfig.build(profile.config, settings, xray = bridge, ownPackage = context.packageName)
                     BoxVpnService.check(context, cfg)
+                    xcfg?.let { io.nekohasekai.xraylite.Xraylite.check(it) }
                     // Сначала гасим AmneziaWG, если он был активен.
                     current?.let { if (!it.box) runCatching { backend.setState(it, Tunnel.State.DOWN, null) } }
                     val svc = BoxVpnService.obtain(context)
                     svc.onStopped = { reason -> scope.launch { onBoxStopped(t, reason) } }
                     current = t
-                    svc.startBox(cfg)
+                    svc.startBox(cfg, xcfg)
                     boxBase = uidBytes()
                 } else {
                     val cfg = parseConfig(ConfigTransform.apply(profile.config, settings))

@@ -466,8 +466,8 @@ class PanelClient(private val profile: PanelProfile) {
 
         fun isTunnelFormat(f: String) = f.startsWith("amneziawg") || f.startsWith("wireguard")
 
-        /** Протоколы, которые приложение запускает на ядре sing-box. XHTTP ядро sing-box не умеет. */
-        fun isSingboxFormat(f: String) = f.substringBefore('@') in setOf("vless", "hysteria2", "trojan", "shadowsocks")
+        /** Протоколы на ядрах sing-box/Xray (XHTTP — через Xray, TUN всё равно держит sing-box). */
+        fun isSingboxFormat(f: String) = f.substringBefore('@') in setOf("vless", "hysteria2", "trojan", "shadowsocks", "xhttp")
 
         /** Можно добавить в соединения телефона (любое ядро). */
         fun isConnectable(f: String) = isTunnelFormat(f) || isSingboxFormat(f)

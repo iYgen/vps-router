@@ -117,6 +117,31 @@ class DeviceInboundsTest extends TestCase
         }
     }
 
+    public function testXhttpOutboundForXrayCore(): void
+    {
+        DeviceInbounds::saveSettings(self::ALL_ON + ['xhttp' => ['enabled' => true, 'port' => 443]]);
+        Setting::set('inbound_xhttp_host', 'site.example.com');
+        Setting::set('inbound_xhttp_path', '/abcdef12');
+        try {
+            $client = Client::find(Client::create('X-' . uniqid())['id']);
+            $o = DeviceInbounds::clientConfigs($client)['xhttp']['outbound'] ?? null;
+            $this->assertIsArray($o);
+            $this->assertSame('vless', $o['protocol']);
+            $this->assertArrayNotHasKey('type', $o); // признак Xray-формата для приложения
+            $this->assertSame('site.example.com', $o['settings']['vnext'][0]['address']);
+            $this->assertSame($client['uuid'], $o['settings']['vnext'][0]['users'][0]['id']);
+            $this->assertSame('xhttp', $o['streamSettings']['network']);
+            $this->assertSame('/abcdef12', $o['streamSettings']['xhttpSettings']['path']);
+            $this->assertSame('site.example.com', $o['streamSettings']['tlsSettings']['serverName']);
+            if ($dir = getenv('DUMP_OUTBOUNDS')) {
+                file_put_contents("$dir/xhttp.json", json_encode($o, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+            }
+        } finally {
+            Setting::set('inbound_xhttp_host', '');
+            Setting::set('inbound_xhttp_path', '');
+        }
+    }
+
     public function testVlessCanBeDisabledWithoutRealityBlockingBuild(): void
     {
         $values = self::ALL_ON;

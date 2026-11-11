@@ -646,6 +646,26 @@ class DeviceInbounds
                     $uri = 'vless://' . $client['uuid'] . '@' . self::uriHost($via ? $host : $xh) . ':' . $port . '?'
                         . http_build_query($q, '', '&', PHP_QUERY_RFC3986) . '#' . rawurlencode($name . ' XHTTP');
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-xhttp.txt");
+                    // Для Android-приложения: outbound ядра Xray (sing-box XHTTP не умеет).
+                    // Признак Xray-формата — ключ "protocol" (у sing-box — "type").
+                    $xs = ['host' => $xh, 'path' => self::xhttpPath(), 'mode' => 'auto'];
+                    if ($extra) {
+                        $xs['extra'] = $extra;
+                    }
+                    $out[$protocol]['outbound'] = [
+                        'protocol' => 'vless',
+                        'settings' => ['vnext' => [[
+                            'address' => $via ? $host : $xh,
+                            'port' => $port,
+                            'users' => [['id' => $client['uuid'], 'encryption' => 'none']],
+                        ]]],
+                        'streamSettings' => [
+                            'network' => 'xhttp',
+                            'security' => 'tls',
+                            'tlsSettings' => ['serverName' => $xh, 'fingerprint' => 'edge', 'alpn' => ['h2']],
+                            'xhttpSettings' => $xs,
+                        ],
+                    ];
                     break;
 
                 case 'shadowsocks':

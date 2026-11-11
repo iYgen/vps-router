@@ -78,9 +78,11 @@ class BoxVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         stopSelf()
     }
 
-    fun startBox(config: String) {
+    fun startBox(config: String, xrayConfig: String? = null) {
         setup(this)
         closeAll()
+        // Сначала Xray (XHTTP), чтобы его вход уже слушал, когда sing-box поднимет TUN.
+        xrayConfig?.let { io.nekohasekai.xraylite.Xraylite.start(it) }
         val s = CommandServer(this, this)
         server = s
         s.start()
@@ -98,6 +100,7 @@ class BoxVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             runCatching { s.close() }
         }
         server = null
+        runCatching { if (io.nekohasekai.xraylite.Xraylite.running()) io.nekohasekai.xraylite.Xraylite.stop() }
         runCatching { tunFd?.close() }
         tunFd = null
     }
@@ -281,6 +284,7 @@ class BoxVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         }
 
         fun version(): String = runCatching { Libbox.version() }.getOrDefault("?")
+        fun xrayVersion(): String = runCatching { io.nekohasekai.xraylite.Xraylite.version() }.getOrDefault("?")
 
         private fun flagsOf(ni: java.net.NetworkInterface): Int {
             var f = 0

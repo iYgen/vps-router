@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -23,9 +24,42 @@ import kotlinx.serialization.json.putJsonObject
 object BoxConfig {
     private val json = Json { prettyPrint = false }
 
-    fun build(outboundJson: String, s: AppSettings, dnsOverride: String = s.dnsOverride): String {
+    /** Локальный вход Xray для XHTTP: порт и одноразовые логин/пароль (чтобы им не пользовались другие приложения). */
+    data class XrayBridge(val port: Int, val user: String, val pass: String)
+
+    /** Outbound в формате Xray (ключ "protocol") — его запускает ядро Xray (VLESS+XHTTP). */
+    fun isXray(outboundJson: String): Boolean = runCatching {
+        Json.parseToJsonElement(outboundJson).jsonObject.containsKey("protocol")
+    }.getOrDefault(false)
+
+    /** Конфиг Xray: SOCKS-вход на 127.0.0.1 с паролем → outbound из панели. */
+    fun xrayConfig(outboundJson: String, b: XrayBridge): String {
         val outbound = JsonObject(Json.parseToJsonElement(outboundJson).jsonObject + ("tag" to JsonPrimitive("proxy")))
-        val (included, excluded) = ConfigTransform.appLists(s)
+        val cfg = buildJsonObject {
+            putJsonObject("log") { put("loglevel", "warning") }
+            putJsonArray("inbounds") {
+                add(buildJsonObject {
+                    put("tag", "in"); put("listen", "127.0.0.1"); put("port", b.port); put("protocol", "socks")
+                    putJsonObject("settings") {
+                        put("auth", "password"); put("udp", true)
+                        putJsonArray("accounts") { add(buildJsonObject { put("user", b.user); put("pass", b.pass) }) }
+                    }
+                })
+            }
+            putJsonArray("outbounds") { add(outbound) }
+        }
+        return json.encodeToString(JsonObject.serializer(), cfg)
+    }
+
+    fun build(outboundJson: String, s: AppSettings, dnsOverride: String = s.dnsOverride, xray: XrayBridge? = null, ownPackage: String? = null): String {
+        val outbound = if (xray != null) buildJsonObject {
+            // Трафик из TUN — в локальный вход Xray, наружу его ведёт уже Xray (XHTTP).
+            put("type", "socks"); put("tag", "proxy"); put("server", "127.0.0.1"); put("server_port", xray.port)
+            put("version", "5"); put("username", xray.user); put("password", xray.pass)
+        } else JsonObject(Json.parseToJsonElement(outboundJson).jsonObject + ("tag" to JsonPrimitive("proxy")))
+        val (included, excludedBase) = ConfigTransform.appLists(s)
+        // Сокеты Xray не умеют protect(), поэтому само приложение выводим из туннеля.
+        val excluded = if (xray != null && ownPackage != null && included.isEmpty()) (excludedBase + ownPackage).distinct() else excludedBase
         val dns = dnsOverride.split(',', ' ').map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "1.1.1.1"
 
         val cfg = buildJsonObject {
@@ -81,6 +115,11 @@ object BoxConfig {
     /** Адрес сервера из outbound — для экрана «Связи» и подробностей. */
     fun endpointOf(outboundJson: String): Pair<String, Int>? = runCatching {
         val o = Json.parseToJsonElement(outboundJson).jsonObject
+        if (o.containsKey("protocol")) {
+            // Xray: settings.vnext[0].address/port
+            val v = o["settings"]!!.jsonObject["vnext"]!!.jsonArray[0].jsonObject
+            return (v["address"] as JsonPrimitive).content to ((v["port"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0)
+        }
         val host = (o["server"] as? JsonPrimitive)?.content ?: return null
         host to ((o["server_port"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0)
     }.getOrNull()

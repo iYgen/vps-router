@@ -57,3 +57,25 @@ class BoxConfigTest {
         assertTrue(parse(File(dir, "hy2.json").readText()) is JsonObject)
     }
 }
+
+class BoxConfigXrayTest {
+    // Как outbound XHTTP из панели, но без TLS — для локальной проверки цепочки.
+    private val xhttp = """{"protocol":"vless","settings":{"vnext":[{"address":"127.0.0.1","port":18443,"users":[{"id":"0b6b6a63-1f7e-4d55-9f43-2c6a8f0b5a11","encryption":"none"}]}]},"streamSettings":{"network":"xhttp","xhttpSettings":{"path":"/abc123","mode":"auto"}}}"""
+    private val bridge = BoxConfig.XrayBridge(18080, "u1", "p1")
+
+    @Test fun detectsXrayAndBridges() {
+        assertTrue(BoxConfig.isXray(xhttp))
+        assertEquals("127.0.0.1" to 18443, BoxConfig.endpointOf(xhttp))
+        val c = Json.parseToJsonElement(BoxConfig.build(xhttp, AppSettings(hiddenApps = listOf("ru.mos.mesh")), xray = bridge, ownPackage = "app.vpsrouter.client")).jsonObject
+        val proxy = c["outbounds"]!!.jsonArray[0].jsonObject
+        assertEquals("socks", proxy["type"]!!.jsonPrimitive.content)
+        assertEquals("u1", proxy["username"]!!.jsonPrimitive.content)
+        val exc = c["inbounds"]!!.jsonArray[0].jsonObject["exclude_package"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertTrue("app.vpsrouter.client" in exc && "ru.mos.mesh" in exc)
+        val x = Json.parseToJsonElement(BoxConfig.xrayConfig(xhttp, bridge)).jsonObject
+        assertEquals("password", x["inbounds"]!!.jsonArray[0].jsonObject["settings"]!!.jsonObject["auth"]!!.jsonPrimitive.content)
+        val dir = File("build/box-samples").apply { mkdirs() }
+        File(dir, "xray-client.json").writeText(BoxConfig.xrayConfig(xhttp, bridge))
+        File(dir, "box-xray.json").writeText(BoxConfig.build(xhttp, AppSettings(), xray = bridge, ownPackage = "app.vpsrouter.client"))
+    }
+}

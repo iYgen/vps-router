@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import app.vpsrouter.client.tunnel.BoxVpnService
 import app.vpsrouter.client.App
 import app.vpsrouter.client.BuildConfig
 import app.vpsrouter.client.data.AppLog
@@ -158,6 +159,7 @@ fun SettingsScreen(nav: NavController) {
                 Text("О приложении", fontWeight = FontWeight.SemiBold, color = Pal.accent2)
                 Row2("Версия", BuildConfig.VERSION_NAME)
                 Row2("AmneziaWG", app.tunnels.backendVersion())
+                Row2("sing-box / Xray", BoxVpnService.version() + " / " + BoxVpnService.xrayVersion())
                 Row2("Туннелей / серверов", "${data.tunnels.size} / ${data.servers.size}")
             }
             Spacer(Modifier.height(24.dp))
