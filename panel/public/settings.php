@@ -724,6 +724,12 @@ View::header('Настройки');
     </table>
   </div>
 
+  <div class="card" id="mobile-app">
+    <h2 style="margin-top:0"><?= htmlspecialchars(t('settings.app.title')) ?></h2>
+    <p class="muted"><?= htmlspecialchars(t('app.settings_link_desc')) ?></p>
+    <a class="btn secondary" href="/app.php"><?= htmlspecialchars(t('app.open_page')) ?></a>
+  </div>
+
   <div class="card">
     <h2 style="margin-top:0"><?= htmlspecialchars(t('settings.account.login.title')) ?></h2>
     <p class="muted"><?= htmlspecialchars(t('settings.account.login.desc')) ?></p>

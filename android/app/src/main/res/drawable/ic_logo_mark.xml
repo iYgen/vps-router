@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Знак VPS Router (panel/public/assets/img/logo-mark.svg) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="50dp" android:height="48dp"
+    android:viewportWidth="50" android:viewportHeight="48">
+    <group>
+        <path
+            android:pathData="M7,8h10l7,19 7,-19h10L30,40H21z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="7" android:startY="8"
+                    android:endX="41" android:endY="40">
+                    <item android:offset="0" android:color="#FFFF4F87" />
+                    <item android:offset="1" android:color="#FF8B7CFF" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path
+            android:fillColor="#FFFF4F87"
+            android:pathData="M31,8h13v5h-7.5L44,7v11h-5v-6.2h-5z" />
+    </group>
+</vector>

@@ -33,6 +33,12 @@ id_rsa*
 settings-export*.json
 *.backup
 
+# Локальные секреты разработчика (ключ подписи Android-приложения и пароли к нему)
+.secrets/
+*.jks
+*.keystore
+keystore.properties
+
 # --- Локальное окружение --------------------------------------
 .env
 .env.*

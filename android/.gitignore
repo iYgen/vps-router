@@ -1,0 +1,13 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+*.keystore
+!debug.keystore
+
+# Ключ подписи релизов (не коммитить!)
+*.jks
+keystore.properties

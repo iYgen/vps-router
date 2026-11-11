@@ -32,6 +32,7 @@ class View
         ],
         'nav.section.system' => [
             'modules.php' => ['label' => 'nav.modules', 'icon' => 'puzzle'],
+            'app.php' => ['label' => 'nav.app', 'icon' => 'device'],
             'settings.php' => ['label' => 'nav.settings', 'icon' => 'settings'],
         ],
     ];

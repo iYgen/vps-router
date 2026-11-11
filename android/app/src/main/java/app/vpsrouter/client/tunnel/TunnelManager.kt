@@ -1,0 +1,150 @@
+package app.vpsrouter.client.tunnel
+
+import android.content.Context
+import app.vpsrouter.client.data.AppLog
+import app.vpsrouter.client.data.Repository
+import app.vpsrouter.client.data.TunnelProfile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import org.amnezia.awg.backend.BackendException
+import org.amnezia.awg.backend.GoBackend
+import org.amnezia.awg.backend.Tunnel
+import org.amnezia.awg.config.Config
+import java.io.BufferedReader
+import java.io.StringReader
+
+data class TunnelStatus(
+    val activeId: String? = null,
+    val state: Tunnel.State = Tunnel.State.DOWN,
+    val rx: Long = 0,
+    val tx: Long = 0,
+    val lastHandshake: Long = 0,
+    /** Время включения туннеля (для таймера соединения). */
+    val connectedAt: Long = 0,
+    /** Скорость, байт/с. */
+    val rxRate: Long = 0,
+    val txRate: Long = 0,
+    val error: String? = null,
+    val busy: Boolean = false,
+)
+
+/**
+ * Один активный туннель за раз (как в AmneziaWG). Бэкенд — userspace amneziawg-go
+ * через VpnService (GoBackend), root не нужен.
+ */
+class TunnelManager(private val context: Context, private val repo: Repository) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val backend by lazy { GoBackend(context.applicationContext) }
+    private val mutex = Mutex()
+    private val _status = MutableStateFlow(TunnelStatus())
+    val status: StateFlow<TunnelStatus> = _status.asStateFlow()
+    private var statsJob: Job? = null
+
+    private inner class AppTunnel(val profileId: String) : Tunnel {
+        override fun getName() = "vpsr"
+        override fun onStateChange(newState: Tunnel.State) {
+            _status.value = _status.value.copy(
+                state = newState,
+                activeId = if (newState == Tunnel.State.UP) profileId else _status.value.activeId,
+            )
+            if (newState == Tunnel.State.DOWN) statsJob?.cancel()
+        }
+    }
+
+    private var current: AppTunnel? = null
+
+    fun backendVersion(): String = runCatching { backend.version }.getOrDefault("?")
+
+    suspend fun toggle(profile: TunnelProfile) {
+        if (_status.value.activeId == profile.id && _status.value.state == Tunnel.State.UP) stop() else start(profile)
+    }
+
+    suspend fun start(profile: TunnelProfile) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            _status.value = _status.value.copy(busy = true, error = null)
+            try {
+                val settings = repo.data.value.settings
+                val cfg = parseConfig(ConfigTransform.apply(profile.config, settings))
+                current?.let { if (it.profileId != profile.id) backend.setState(it, Tunnel.State.DOWN, null) }
+                val t = AppTunnel(profile.id)
+                current = t
+                backend.setState(t, Tunnel.State.UP, cfg)
+                _status.value = TunnelStatus(activeId = profile.id, state = Tunnel.State.UP, connectedAt = System.currentTimeMillis())
+                AppLog.i("Туннель «${profile.name}» подключён (${ConfigTransform.describe(settings)})")
+                repo.update { it.copy(lastTunnelId = profile.id) }
+                startStats(t)
+            } catch (e: Exception) {
+                _status.value = _status.value.copy(busy = false, error = describe(e))
+                AppLog.e("Не удалось подключить «${profile.name}»: ${describe(e)}")
+            }
+        }
+    }
+
+    suspend fun stop() = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val t = current ?: return@withLock
+            try {
+                backend.setState(t, Tunnel.State.DOWN, null)
+            } catch (e: Exception) {
+                _status.value = _status.value.copy(error = describe(e))
+            }
+            statsJob?.cancel()
+            _status.value = TunnelStatus()
+            AppLog.i("Туннель отключён")
+        }
+    }
+
+    /** Перезапуск активного туннеля с новым конфигом (после правки профиля). */
+    suspend fun restartIfActive(profile: TunnelProfile) {
+        if (_status.value.activeId == profile.id && _status.value.state == Tunnel.State.UP) start(profile)
+    }
+
+    private fun startStats(t: AppTunnel) {
+        statsJob?.cancel()
+        statsJob = scope.launch {
+            while (isActive) {
+                runCatching {
+                    val st = backend.getStatistics(t)
+                    var hs = 0L
+                    for (k in st.peers()) {
+                        st.peer(k)?.let { hs = maxOf(hs, it.latestHandshakeEpochMillis()) }
+                    }
+                    val prev = _status.value
+                    val rx = st.totalRx(); val tx = st.totalTx()
+                    _status.value = prev.copy(
+                        rx = rx, tx = tx, lastHandshake = hs, busy = false,
+                        rxRate = if (prev.rx in 1..rx) rx - prev.rx else 0,
+                        txRate = if (prev.tx in 1..tx) tx - prev.tx else 0,
+                    )
+                }
+                delay(1000)
+            }
+        }
+    }
+
+    private fun describe(e: Exception): String = when (e) {
+        is BackendException -> when (e.reason) {
+            BackendException.Reason.VPN_NOT_AUTHORIZED -> "Нет разрешения на VPN — подтвердите запрос системы"
+            BackendException.Reason.UNABLE_TO_START_VPN -> "Не удалось запустить VPN-службу"
+            BackendException.Reason.TUN_CREATION_ERROR -> "Не удалось создать TUN-интерфейс (возможно, активен другой VPN)"
+            BackendException.Reason.GO_ACTIVATION_ERROR_CODE -> "Ошибка запуска AmneziaWG (код ${e.format.joinToString()})"
+            else -> "Ошибка туннеля: ${e.reason}"
+        }
+        else -> e.message ?: e.javaClass.simpleName
+    }
+
+    companion object {
+        fun parseConfig(text: String): Config = Config.parse(BufferedReader(StringReader(text)))
+    }
+}

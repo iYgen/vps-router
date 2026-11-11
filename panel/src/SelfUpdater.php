@@ -26,7 +26,7 @@ class SelfUpdater
     private const MAX_BYTES = 64 * 1024 * 1024; // 64 МБ — архив кода заведомо меньше
 
     /** Каталоги/файлы кода, которые бэкапим и накладываем (относительно корня). */
-    private const CODE_PATHS = ['src', 'public', 'lang', 'migrations', 'bin', 'templates',
+    private const CODE_PATHS = ['src', 'public', 'lang', 'migrations', 'bin', 'templates', 'app',
         'composer.json', 'composer.lock', 'phpunit.xml', 'VERSION'];
 
     /** Корень кода панели (/var/www/panel). */

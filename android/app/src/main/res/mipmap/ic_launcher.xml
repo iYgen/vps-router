@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Иконка для Android 7.x (без адаптивных иконок): тёмная плашка + знак VPS Router -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FF151519" android:pathData="M24,6h60a18,18 0,0 1,18 18v60a18,18 0,0 1,-18 18h-60a18,18 0,0 1,-18 -18v-60a18,18 0,0 1,18 -18z" />
+    <group android:scaleX="1.5" android:scaleY="1.5" android:translateX="15.75" android:translateY="18.75">
+        <path
+            android:pathData="M7,8h10l7,19 7,-19h10L30,40H21z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="7" android:startY="8"
+                    android:endX="41" android:endY="40">
+                    <item android:offset="0" android:color="#FFFF4F87" />
+                    <item android:offset="1" android:color="#FF8B7CFF" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path
+            android:fillColor="#FFFF4F87"
+            android:pathData="M31,8h13v5h-7.5L44,7v11h-5v-6.2h-5z" />
+    </group>
+</vector>
