@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Speed
@@ -133,6 +134,9 @@ fun BrandBar(nav: NavController) {
         val appData by App.instance.repo.data.collectAsState()
         val speedOn = appData.settings.speedInStatusBar
         val toggleSpeed = rememberSpeedToggle()
+        var boost by remember { mutableStateOf(false) }
+        IconButton(onClick = { boost = true }) { Icon(Icons.Filled.Bolt, "Ускорение", tint = if (appData.settings.netBoost) Pal.accent else Pal.muted) }
+        if (boost) BoostSheet { boost = false }
         IconButton(onClick = toggleSpeed) { Icon(Icons.Filled.Speed, if (speedOn) "Скрыть скорость у камеры" else "Показать скорость у камеры", tint = if (speedOn) Pal.accent else Pal.muted) }
         Box {
             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Меню") }

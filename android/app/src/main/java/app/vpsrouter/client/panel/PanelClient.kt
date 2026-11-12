@@ -305,6 +305,18 @@ class PanelClient(private val profile: PanelProfile) {
         if (o.bool("ok")) null else (o.str("raw_error") ?: o.str("error") ?: "Не удалось войти по SSH")
     }
 
+    /** Ускорение (BBR + fq) на серверах панели: action = on | off, null — только узнать состояние. */
+    suspend fun netBoost(action: String?): List<app.vpsrouter.client.data.BoostResult> = withContext(Dispatchers.IO) {
+        val el = if (action == null) api("GET", "/api/net-boost.php?live=1")
+        else api("POST", "/api/net-boost.php", JsonObject(mapOf("action" to JsonPrimitive(action))))
+        ((el as? JsonObject)?.get("servers") as? kotlinx.serialization.json.JsonArray).orEmpty().map { it.jsonObject }.map {
+            app.vpsrouter.client.data.BoostResult(
+                name = it.str("name").orEmpty(), ok = it.bool("ok"), active = it.bool("active"),
+                cc = it.str("cc"), qdisc = it.str("qdisc"), kernel = it.str("kernel"), error = it.str("error"),
+            )
+        }
+    }
+
     suspend fun deleteServer(id: Int) = withContext(Dispatchers.IO) { api("DELETE", "/api/servers.php?id=$id") }
 
     suspend fun createRelay(relayServerId: Int, routerId: Int): Int = withContext(Dispatchers.IO) {

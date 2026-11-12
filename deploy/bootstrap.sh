@@ -114,6 +114,7 @@ install -o root -g root -m 755 "$PROV_SRC/entry-wg-status.sh"                   
 install -o root -g root -m 755 "$PROV_SRC/pkg-manage.sh"                            /usr/local/sbin/vpsrouter-pkg-manage.sh
 install -o root -g root -m 755 "$PROV_SRC/entry-tgproxy.sh"                            /usr/local/sbin/vpsrouter-tgproxy.sh
 install -o root -g root -m 755 "$PROV_SRC/entry-hs-capture.sh"                         /usr/local/sbin/vpsrouter-hs-capture.sh
+install -o root -g root -m 755 "$PROV_SRC/entry-net-boost.sh"                          /usr/local/sbin/vpsrouter-net-boost.sh
 
 cat > /etc/sudoers.d/panel-zapret <<EOF
 $WEB_USER ALL=(root) NOPASSWD: /usr/local/sbin/vpsrouter-zapret.sh
@@ -130,6 +131,10 @@ EOF
 # Handshake watch: короткий захват трафика одного адреса (аргументы валидирует сам скрипт).
 cat > /etc/sudoers.d/panel-hscapture <<EOF
 $WEB_USER ALL=(root) NOPASSWD: /usr/local/sbin/vpsrouter-hs-capture.sh
+EOF
+# Ускорение сети (BBR + fq) на сервере панели: аргумент on/off/status проверяет сам скрипт.
+cat > /etc/sudoers.d/panel-netboost <<EOF
+$WEB_USER ALL=(root) NOPASSWD: /usr/local/sbin/vpsrouter-net-boost.sh
 EOF
 # журнал sing-box для handshake_watch.php читается без root
 usermod -aG systemd-journal "$WEB_USER" 2>/dev/null || true

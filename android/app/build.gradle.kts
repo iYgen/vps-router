@@ -18,8 +18,8 @@ android {
         targetSdk = 35
         // Версия приложения. При каждом выпуске увеличивайте versionCode — по нему
         // приложение и панель понимают, что есть обновление.
-        versionCode = 12
-        versionName = "0.7.0"
+        versionCode = 13
+        versionName = "0.8.0"
         // Откуда приложение само скачивает обновления (без панели): каталог panel/app/ в репозитории.
         // Версии ядер в libs/libbox.aar (см. core/README.md) — для экрана «О приложении», без загрузки ядра.
         buildConfigField("String", "CORE_VERSIONS", "\"sing-box 1.14.4 / Xray 26.3.27\"")
@@ -127,7 +127,7 @@ dependencies {
 // Скрипты установки берутся прямо из deploy/provision этого же репозитория — приложение
 // и панель всегда используют одну и ту же версию _lib.sh и relay-forward.sh.
 val syncProvisionScripts by tasks.registering(Copy::class) {
-    from(rootProject.file("../deploy/provision")) { include("_lib.sh", "relay-forward.sh") }
+    from(rootProject.file("../deploy/provision")) { include("_lib.sh", "relay-forward.sh", "net-boost.sh") }
     into(layout.buildDirectory.dir("generated/provision-assets/provision"))
 }
 tasks.named("preBuild") { dependsOn(syncProvisionScripts) }

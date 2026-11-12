@@ -73,6 +73,15 @@ class LocalOps(private val context: Context, private val repo: Repository) {
         return res.ok
     }
 
+    /** Ускорение (BBR + fq) на своём сервере по SSH: action = on | off | status. */
+    suspend fun netBoost(serverId: String, action: String): app.vpsrouter.client.data.BoostResult {
+        val s = repo.server(serverId) ?: error("Сервер не найден")
+        return runCatching {
+            val res = withSsh(s) { it.runScript(asset("_lib.sh"), asset("net-boost.sh"), """{"action":"$action"}""") {} }
+            app.vpsrouter.client.data.BoostResult.parse(s.name, res.ok, res.output)
+        }.getOrElse { app.vpsrouter.client.data.BoostResult(s.name, false, error = it.message ?: "ошибка SSH") }
+    }
+
     // ---------------------------------------------------------------- AmneziaWG
 
     suspend fun deployAwg(serverId: String, port: Int, obfs: AwgObfs, firstClient: String?, log: (String) -> Unit): TunnelProfile? {

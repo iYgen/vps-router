@@ -140,6 +140,8 @@ enum class RouteMode { ALL, EXCLUDE_APPS, ONLY_APPS }
 @Serializable
 data class AppSettings(
     val onboarded: Boolean = false,
+    /** «Ускорение»: BBR + fq на серверах (панели и своих по SSH). */
+    val netBoost: Boolean = false,
     /** Подключать последний туннель при запуске приложения. */
     val autoConnect: Boolean = false,
     val routeMode: RouteMode = RouteMode.ALL,
@@ -240,3 +242,27 @@ data class AppData(
 
 @Serializable
 data class ConnTraffic(val rx: Long = 0, val tx: Long = 0, val lastUsed: Long = 0)
+
+/** Состояние ускорения на одном сервере (ответ скрипта net-boost.sh). */
+data class BoostResult(
+    val name: String,
+    val ok: Boolean,
+    /** BBR сейчас работает. */
+    val active: Boolean = false,
+    val cc: String? = null,
+    val qdisc: String? = null,
+    val kernel: String? = null,
+    val error: String? = null,
+) {
+    companion object {
+        private val re = Regex("""NETBOOST enabled=(\d) cc=(\S+) qdisc=(\S+) kernel=(\S+)""")
+
+        /** Разобрать вывод скрипта; без строки состояния — ошибка с хвостом вывода. */
+        fun parse(name: String, ok: Boolean, output: String): BoostResult {
+            val m = re.find(output) ?: return BoostResult(name, false, error = output.trim().takeLast(200).ifBlank { "нет ответа" })
+            val (_, cc, qd, k) = m.destructured
+            val noBbr = !ok && output.contains("BBR")
+            return BoostResult(name, ok, cc == "bbr", cc, qd, k, if (noBbr) "ядро $k не поддерживает BBR" else null)
+        }
+    }
+}

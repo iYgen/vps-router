@@ -489,3 +489,59 @@ install_amneziawg() {
     }
 }
 # ------------------------------- конец _lib.sh -------------------------------
+
+# --- Ускорение сети (кнопка «Ускорение» в приложении/панели) ----------------
+# BBR — алгоритм управления скоростью TCP от Google: на дальних и «шумных» каналах
+# (мобильная сеть, потери пакетов) даёт заметно больше скорости, чем стандартный cubic.
+# fq — очередь с выравниванием (pacing), которую BBR ожидает от системы.
+# tcp_mtu_probing — сам подбирает размер пакета, если где-то по пути MTU меньше (частая
+# причина «сайты открываются не до конца» в туннелях). Настройки переживают перезагрузку.
+NET_BOOST_CONF=/etc/sysctl.d/99-vpsr-boost.conf
+
+net_boost_status() {
+    local cc qd
+    cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "?")
+    qd=$(tc qdisc show dev "$(default_iface)" root 2>/dev/null | awk '{print $2; exit}')
+    echo "NETBOOST enabled=$([ -f "$NET_BOOST_CONF" ] && echo 1 || echo 0) cc=${cc} qdisc=${qd:-?} kernel=$(uname -r)"
+}
+
+net_boost_on() {
+    local wan; wan=$(default_iface)
+    modprobe tcp_bbr 2>/dev/null || true
+    modprobe sch_fq 2>/dev/null || true
+    if ! grep -qw bbr /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+        _lib_log "$(_t "Ядро $(uname -r) не поддерживает BBR (нужно 4.9+ или OpenVZ без своего ядра) — ускорение недоступно" "Kernel $(uname -r) has no BBR (needs 4.9+, not OpenVZ) — boost unavailable")"
+        net_boost_status
+        return 3
+    fi
+    mkdir -p /etc/sysctl.d /etc/modules-load.d
+    echo tcp_bbr > /etc/modules-load.d/vpsr-boost.conf
+    cat > "$NET_BOOST_CONF" <<'CONF'
+# VPS Router: ускорение сети (BBR + fq). Удалите файл, чтобы вернуть как было.
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_mtu_probing = 1
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_slow_start_after_idle = 0
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 131072 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+CONF
+    sysctl -q -p "$NET_BOOST_CONF" >/dev/null 2>&1 || true
+    # default_qdisc действует на новые интерфейсы — текущий выход в интернет переводим сразу.
+    tc qdisc replace dev "$wan" root fq 2>/dev/null || _lib_log "$(_t "fq на $wan не поставился — BBR работает и без него" "fq on $wan failed — BBR works without it")"
+    _lib_log "$(_t "Ускорение включено: BBR + fq на $wan" "Boost enabled: BBR + fq on $wan")"
+    net_boost_status
+}
+
+net_boost_off() {
+    local wan; wan=$(default_iface)
+    rm -f "$NET_BOOST_CONF" /etc/modules-load.d/vpsr-boost.conf
+    sysctl -qw net.ipv4.tcp_congestion_control=cubic 2>/dev/null || true
+    sysctl -qw net.core.default_qdisc=fq_codel 2>/dev/null || true
+    sysctl -qw net.ipv4.tcp_slow_start_after_idle=1 2>/dev/null || true
+    tc qdisc del dev "$wan" root 2>/dev/null || true
+    _lib_log "$(_t "Ускорение выключено: стандартные настройки системы" "Boost disabled: system defaults")"
+    net_boost_status
+}
