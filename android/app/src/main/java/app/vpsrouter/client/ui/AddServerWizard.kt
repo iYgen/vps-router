@@ -103,6 +103,12 @@ fun AddServerWizard(nav: NavController) {
                 0 -> {
                     SectionCard {
                         Text("Доступ по SSH", fontWeight = FontWeight.SemiBold)
+                        CredsCapture { c ->
+                            c.host?.let { host = it }
+                            c.port?.let { port = it }
+                            c.user?.let { user = it }
+                            c.password?.let { pass = it; useKey = false }
+                        }
                         Field(name, { name = it }, "Название")
                         Field(host, { host = it.trim() }, "IP или домен")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

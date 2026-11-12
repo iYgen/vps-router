@@ -81,7 +81,7 @@ fun StartChoices(nav: NavController, onChosen: () -> Unit = {}) {
         Column(Modifier.padding(start = 12.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SubChoice(Icons.Filled.Hub, "Панель VPS Router", "Вход по адресу или QR — подтянутся конфиги всех устройств") { onChosen(); nav.navigate("panel") }
             SubChoice(Icons.Filled.QrCodeScanner, "Сканировать QR", "Ссылка, конфиг AmneziaWG / WireGuard или QR панели") { importer.scan() }
-            SubChoice(Icons.Filled.ContentPaste, "Ссылка, подписка или JSON", "vless://, vmess://, trojan://, ss://, hysteria2://, tuic:// — как в v2rayTun") { importer.paste() }
+            SubChoice(Icons.Filled.ContentPaste, "Ссылка из буфера обмена", "Скопируйте ссылку панели, vless://, ss://, подписку или JSON — и нажмите сюда") { importer.paste() }
             SubChoice(Icons.Filled.ChevronRight, "Файл конфигурации", ".conf или .json из мессенджера или почты") { importer.file() }
             SubChoice(Icons.Filled.Terminal, "VPS по SSH", "Сервер уже настроен — добавить доступ и клиентов") { onChosen(); nav.navigate("wizard") }
         }

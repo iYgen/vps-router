@@ -18,8 +18,8 @@ android {
         targetSdk = 35
         // Версия приложения. При каждом выпуске увеличивайте versionCode — по нему
         // приложение и панель понимают, что есть обновление.
-        versionCode = 11
-        versionName = "0.6.1"
+        versionCode = 12
+        versionName = "0.7.0"
         // Откуда приложение само скачивает обновления (без панели): каталог panel/app/ в репозитории.
         // Версии ядер в libs/libbox.aar (см. core/README.md) — для экрана «О приложении», без загрузки ядра.
         buildConfigField("String", "CORE_VERSIONS", "\"sing-box 1.14.4 / Xray 26.3.27\"")
@@ -74,6 +74,8 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            // OCR для x86 не нужен: ядро sing-box собрано только под ARM, телефоны — ARM.
+            excludes += setOf("lib/x86/libmlkit_google_ocr_pipeline.so", "lib/x86_64/libmlkit_google_ocr_pipeline.so")
         }
         resources {
             excludes += setOf("META-INF/*.md", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
@@ -108,6 +110,8 @@ dependencies {
     implementation("com.github.mwiede:jsch:0.2.21")
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // Распознавание IP и пароля с фото/скриншота — модель внутри APK, без интернета и Google Play.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
 

@@ -63,7 +63,12 @@ fun rememberImporter(onPanelLink: () -> Unit = {}, onImported: (TunnelProfile) -
             paste = {
                 val clip = (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
                     ?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty().trim()
-                text = if (ShareLinks.isLink(clip) || clip.startsWith("{") || clip.contains("[Interface]")) clip else ""
+                val panel = app.vpsrouter.client.panel.PanelLink.parse(clip)
+                if (panel != null) { App.instance.panel.prefill.value = panel; onPanelLink() }
+                else {
+                    if (clip.isEmpty()) ctx.toast("В буфере обмена нет ссылки — вставьте её вручную")
+                    text = if (ShareLinks.isLink(clip) || clip.startsWith("{") || clip.contains("[Interface]")) clip else ""
+                }
             },
         )
     }
