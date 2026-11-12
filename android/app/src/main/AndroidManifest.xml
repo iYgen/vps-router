@@ -83,6 +83,11 @@
             </intent-filter>
         </service>
 
+        <!-- Кнопки «Подключиться» / «Отключиться» в уведомлении -->
+        <receiver
+            android:name=".tunnel.VpnActionReceiver"
+            android:exported="false" />
+
         <!-- QR-сканер zxing — портретная ориентация -->
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"

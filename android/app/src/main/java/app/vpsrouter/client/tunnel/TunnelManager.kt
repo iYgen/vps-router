@@ -77,7 +77,11 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                 state = newState,
                 activeId = if (newState == Tunnel.State.UP) profileId else _status.value.activeId,
             )
-            if (newState == Tunnel.State.DOWN) { statsJob?.cancel(); flushTraffic(); SpeedNotifier.hide(context) }
+            if (newState == Tunnel.State.DOWN) {
+                statsJob?.cancel(); flushTraffic()
+                // Внутри start/stop это переключение — уведомление обновят они сами.
+                if (mutex.isLocked) SpeedNotifier.hide(context) else SpeedNotifier.down(context)
+            }
         }
     }
 
@@ -134,6 +138,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                     _status.value = TunnelStatus()
                 }
                 _status.value = _status.value.copy(busy = false, error = describe(e))
+                if (_status.value.state != Tunnel.State.UP) SpeedNotifier.down(context, describe(e))
                 AppLog.e("Не удалось подключить «${profile.name}»: ${describe(e)}")
             }
         }
@@ -152,7 +157,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
             statsJob?.cancel()
             current = null
             _status.value = TunnelStatus()
-            SpeedNotifier.hide(context)
+            SpeedNotifier.down(context)
             AppLog.i("Туннель отключён")
         }
     }
@@ -206,7 +211,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
         statsJob?.cancel()
         current = null
         _status.value = TunnelStatus(error = reason)
-        SpeedNotifier.hide(context)
+        SpeedNotifier.down(context, reason)
     }
 
     // Трафик ядра sing-box: все его сокеты к серверу принадлежат нашему приложению.
