@@ -281,6 +281,41 @@ class DeviceInbounds
         ];
     }
 
+    /**
+     * VLESS Encryption (ML-KEM-768 + X25519) внутри XHTTP: даже если TLS
+     * снимет посредник (CDN, nginx-релей), поток остаётся зашифрован и не
+     * похож на VLESS. Без явной настройки включено только на новых установках
+     * (домен ещё не задан) — старые сторонние клиенты со ссылкой encryption=none
+     * иначе перестали бы подключаться.
+     */
+    public static function vlessEncEnabled(): bool
+    {
+        $v = self::cfg('inbound_xhttp_vlessenc');
+        if ($v === null || $v === '') {
+            return self::xhttpHost() === null;
+        }
+        return $v === '1';
+    }
+
+    /** Серверная строка decryption для Xray-inbound ('none' — выключено). */
+    public static function vlessDecryption(): string
+    {
+        $priv = self::cfg('inbound_xhttp_vlessenc_priv');
+        return self::vlessEncEnabled() && $priv ? 'mlkem768x25519plus.native.600s.' . $priv : 'none';
+    }
+
+    /** Клиентская строка encryption (ссылка и outbound приложения). */
+    public static function vlessEncryption(): string
+    {
+        $pub = self::cfg('inbound_xhttp_vlessenc_pub');
+        return self::vlessEncEnabled() && $pub ? 'mlkem768x25519plus.native.0rtt.' . $pub : 'none';
+    }
+
+    private static function b64url(string $raw): string
+    {
+        return rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
+    }
+
     /** Сохранить настройки XHTTP из формы. Бросает InvalidArgumentException. */
     public static function saveXhttpSettings(array $in): void
     {
@@ -302,6 +337,7 @@ class DeviceInbounds
         }
         self::cfgset('inbound_xhttp_xmux', !empty($in['xmux']) ? '1' : '0');
         self::cfgset('inbound_xhttp_xmux_concurrency', $conc);
+        self::cfgset('inbound_xhttp_vlessenc', !empty($in['vlessenc']) ? '1' : '0');
         self::ensureSecrets();
     }
 
@@ -403,6 +439,12 @@ class DeviceInbounds
         }
         if (self::isEnabled('xhttp') && self::xhttpPath() === '') {
             self::cfgset('inbound_xhttp_path', '/' . bin2hex(random_bytes(8)));
+        }
+        if (self::isEnabled('xhttp') && !self::cfg('inbound_xhttp_vlessenc_priv')) {
+            // X25519: закрытый ключ — 32 случайных байта (Xray сам их «зажимает»), открытый — scalarmult_base.
+            $priv = random_bytes(32);
+            self::cfgset('inbound_xhttp_vlessenc_priv', self::b64url($priv));
+            self::cfgset('inbound_xhttp_vlessenc_pub', self::b64url(sodium_crypto_scalarmult_base($priv)));
         }
     }
 
@@ -630,7 +672,7 @@ class DeviceInbounds
                     }
                     $xh = self::xhttpHost();
                     $q = [
-                        'encryption' => 'none',
+                        'encryption' => self::vlessEncryption(),
                         'security' => 'tls',
                         'sni' => $xh,
                         'fp' => 'edge', // как у Reality: hello в один сегмент
@@ -657,7 +699,7 @@ class DeviceInbounds
                         'settings' => ['vnext' => [[
                             'address' => $via ? $host : $xh,
                             'port' => $port,
-                            'users' => [['id' => $client['uuid'], 'encryption' => 'none']],
+                            'users' => [['id' => $client['uuid'], 'encryption' => self::vlessEncryption()]],
                         ]]],
                         'streamSettings' => [
                             'network' => 'xhttp',

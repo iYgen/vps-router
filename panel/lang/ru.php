@@ -237,6 +237,8 @@ return [
     'settings.xhttp.path' => 'Секретный путь',
     'settings.xhttp.path_auto' => 'сгенерируется',
     'settings.xhttp.concurrency' => 'потоков на соединение',
+    'settings.xhttp.vlessenc' => 'VLESS Encryption (постквантовое)',
+    'settings.xhttp.vlessenc_hint' => 'Шифрование ML-KEM-768 + X25519 внутри XHTTP: поток не читается, даже если TLS снят посредником. Нужен Xray 25.9+ у клиента (v2rayNG, v2rayTun, Happ, приложение VPS Router). После включения раздайте ссылки заново.',
     'settings.xhttp.note' => 'xmux: клиент держит несколько долгих HTTP/2-соединений и пускает в них потоки — меньше новых TLS-рукопожатий, устойчивее при обрывах. В server{} сайта на 443 добавьте: include snippets/vpsrouter-xhttp.conf;',
 
     'settings.adblock.title' => 'Блокировка рекламы',

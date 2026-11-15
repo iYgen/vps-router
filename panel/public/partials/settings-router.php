@@ -107,6 +107,9 @@ use App\RiskScanner;
               <label style="display:flex;align-items:center;gap:6px">
                 <input type="checkbox" name="xhttp[xmux]" value="1" <?= DeviceInbounds::xmuxEnabled() ? 'checked' : '' ?>>
                 xmux</label>
+              <label style="display:flex;align-items:center;gap:6px" title="<?= htmlspecialchars(t('settings.xhttp.vlessenc_hint')) ?>">
+                <input type="checkbox" name="xhttp[vlessenc]" value="1" <?= DeviceInbounds::vlessEncEnabled() ? 'checked' : '' ?>>
+                <?= htmlspecialchars(t('settings.xhttp.vlessenc')) ?></label>
               <label><?= htmlspecialchars(t('settings.xhttp.concurrency')) ?><br>
                 <input type="text" name="xhttp[xmux_concurrency]" value="<?= htmlspecialchars(DeviceInbounds::xmuxConcurrency()) ?>" style="width:80px"></label>
             </div>

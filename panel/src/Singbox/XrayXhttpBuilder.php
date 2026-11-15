@@ -51,7 +51,7 @@ class XrayXhttpBuilder
                 'listen' => '127.0.0.1',
                 'port' => DeviceInbounds::XHTTP_LOCAL_PORT,
                 'protocol' => 'vless',
-                'settings' => ['clients' => $xrayClients, 'decryption' => 'none'],
+                'settings' => ['clients' => $xrayClients, 'decryption' => DeviceInbounds::vlessDecryption()],
                 'streamSettings' => [
                     'network' => 'xhttp',
                     'xhttpSettings' => ['path' => DeviceInbounds::xhttpPath(), 'mode' => 'auto'],

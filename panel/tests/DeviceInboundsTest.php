@@ -159,6 +159,50 @@ class DeviceInboundsTest extends TestCase
         }
     }
 
+    public function testXhttpVlessEncryptionKeysMatch(): void
+    {
+        DeviceInbounds::saveSettings(self::ALL_ON + ['xhttp' => ['enabled' => true, 'port' => 443]]);
+        try {
+            // Старая установка (домен уже задан, настройки нет) — без шифрования, ссылки не меняются.
+            Setting::set('inbound_xhttp_vlessenc', '');
+            Setting::set('inbound_xhttp_host', 'site.example.com');
+            $this->assertFalse(DeviceInbounds::vlessEncEnabled());
+            $this->assertSame('none', DeviceInbounds::vlessDecryption());
+
+            // Новая установка (домен ещё не задан) — включено по умолчанию.
+            Setting::set('inbound_xhttp_host', '');
+            $this->assertTrue(DeviceInbounds::vlessEncEnabled());
+
+            DeviceInbounds::saveXhttpSettings(['host' => 'site.example.com', 'path' => '/abcdef12', 'xmux' => '1', 'vlessenc' => '1']);
+            $dec = DeviceInbounds::vlessDecryption();
+            $enc = DeviceInbounds::vlessEncryption();
+            $this->assertMatchesRegularExpression('/^mlkem768x25519plus\.native\.600s\.[A-Za-z0-9_-]{43}$/', $dec);
+            $this->assertMatchesRegularExpression('/^mlkem768x25519plus\.native\.0rtt\.[A-Za-z0-9_-]{43}$/', $enc);
+            $b64 = fn(string $s) => base64_decode(strtr(substr($s, strrpos($s, '.') + 1), '-_', '+/'));
+            $this->assertSame(sodium_crypto_scalarmult_base($b64($dec)), $b64($enc));
+
+            $client = Client::find(Client::create('E-' . uniqid())['id']);
+            $cfg = DeviceInbounds::clientConfigs($client)['xhttp'];
+            $this->assertStringContainsString('encryption=' . rawurlencode($enc), $cfg['uri']);
+            $this->assertSame($enc, $cfg['outbound']['settings']['vnext'][0]['users'][0]['encryption']);
+            $xray = \App\Singbox\XrayXhttpBuilder::build(Client::active());
+            $this->assertSame($dec, $xray['inbounds'][0]['settings']['decryption']);
+
+            // DUMP_OUTBOUNDS=<каталог> — проверить настоящим Xray: xray run -test -c server.json / client.json
+            if ($dir = getenv('DUMP_OUTBOUNDS')) {
+                file_put_contents("$dir/xhttp-server.json", json_encode($xray, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+                file_put_contents("$dir/xhttp-client.json", json_encode(['outbounds' => [$cfg['outbound']]], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+            }
+
+            DeviceInbounds::saveXhttpSettings(['host' => 'site.example.com', 'path' => '/abcdef12']);
+            $this->assertSame('none', DeviceInbounds::vlessEncryption());
+        } finally {
+            Setting::set('inbound_xhttp_host', '');
+            Setting::set('inbound_xhttp_path', '');
+            Setting::set('inbound_xhttp_vlessenc', '');
+        }
+    }
+
     public function testVlessCanBeDisabledWithoutRealityBlockingBuild(): void
     {
         $values = self::ALL_ON;
