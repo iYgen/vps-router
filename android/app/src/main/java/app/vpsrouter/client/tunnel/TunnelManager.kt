@@ -38,6 +38,8 @@ data class TunnelStatus(
     val txRate: Long = 0,
     val error: String? = null,
     val busy: Boolean = false,
+    /** Пояснение автопереключения: «Reality не работал в этой сети → AmneziaWG». */
+    val note: String? = null,
 )
 
 /**
@@ -94,8 +96,14 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
         if (_status.value.activeId == profile.id && _status.value.state == Tunnel.State.UP) stop() else start(profile)
     }
 
-    suspend fun start(profile: TunnelProfile) = withContext(Dispatchers.IO) {
+    /**
+     * @param autoNote не null — переключение сделал автовыбор (а не пользователь): список
+     *   «не работавших» типов сохраняется и пояснение показывается на главной.
+     */
+    suspend fun start(profile: TunnelProfile, autoNote: String? = null) = withContext(Dispatchers.IO) {
         mutex.withLock {
+            healthJob?.cancel()
+            if (autoNote == null) failedAt.clear()
             _status.value = _status.value.copy(busy = true, error = null)
             try {
                 val settings = repo.data.value.settings
@@ -118,6 +126,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                     current = t
                     svc.startBox(cfg, xcfg)
                     boxBase = uidBytes()
+                    bridgeNow = bridge
                 } else {
                     val cfg = parseConfig(ConfigTransform.apply(profile.config, settings))
                     current?.let {
@@ -126,11 +135,13 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                     }
                     current = t
                     backend.setState(t, Tunnel.State.UP, cfg)
+                    bridgeNow = null
                 }
-                _status.value = TunnelStatus(activeId = profile.id, state = Tunnel.State.UP, connectedAt = System.currentTimeMillis())
+                _status.value = TunnelStatus(activeId = profile.id, state = Tunnel.State.UP, connectedAt = System.currentTimeMillis(), note = autoNote)
                 AppLog.i("Туннель «${profile.name}» подключён (${ConfigTransform.describe(settings)})")
                 repo.update { it.copy(lastTunnelId = profile.id) }
                 startStats(t)
+                startHealth(t, profile)
             } catch (e: Exception) {
                 if (profile.isSingbox) {
                     BoxVpnService.instance?.let { runCatching { it.onStopped = null; it.stopBox() } }
@@ -146,6 +157,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
 
     suspend fun stop() = withContext(Dispatchers.IO) {
         mutex.withLock {
+            healthJob?.cancel()
             val t = current ?: return@withLock
             flushTraffic(); savedRx = 0; savedTx = 0
             try {
@@ -208,10 +220,73 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
     private suspend fun onBoxStopped(t: AppTunnel, reason: String?) = mutex.withLock {
         if (current !== t) return@withLock
         flushTraffic(); savedRx = 0; savedTx = 0
-        statsJob?.cancel()
+        statsJob?.cancel(); healthJob?.cancel()
         current = null
         _status.value = TunnelStatus(error = reason)
         SpeedNotifier.down(context, reason)
+    }
+
+    // --- Автовыбор протокола (уровни защиты) -----------------------------------------
+
+    private var healthJob: Job? = null
+    private var bridgeNow: BoxConfig.XrayBridge? = null
+    /** id типа соединения → когда он перестал работать (в этой сессии автовыбора). */
+    private val failedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /**
+     * Пока туннель включён: раз в ~45 с проверяем, что через него ходит трафик (и не
+     * «замораживается» после 16 КБ). Три неудачи подряд при живой сети телефона —
+     * переходим на следующий тип соединения этого же сервера (см. [AutoSwitch]).
+     */
+    private fun startHealth(t: AppTunnel, profile: TunnelProfile) {
+        healthJob?.cancel()
+        val bridge = bridgeNow
+        healthJob = scope.launch {
+            delay(10_000) // дать ядру установить соединение
+            var fails = 0
+            var lastBad: Probe.Verdict? = null
+            while (isActive && current === t) {
+                val settings = repo.data.value.settings
+                val group = app.vpsrouter.client.ui.connectionGroups(repo.data.value).firstOrNull { g -> g.items.any { it.id == profile.id } }
+                if (!settings.autoSwitch || group == null || group.items.size < 2) { delay(30_000); continue }
+
+                val opener = if (bridge != null) Probe.socksOpener(bridge.port, bridge.user, bridge.pass) else Probe.vpnOpener(context)
+                var v = runCatching { Probe.check(opener) }.getOrDefault(Probe.Verdict.UNKNOWN)
+                if (v == Probe.Verdict.UNKNOWN && !t.box) {
+                    // AmneziaWG без возможности проверить запросом: судим по рукопожатию.
+                    val hs = _status.value.lastHandshake
+                    val age = System.currentTimeMillis() - (if (hs > 0) hs else _status.value.connectedAt)
+                    v = if (age > 180_000) Probe.Verdict.DEAD else Probe.Verdict.OK
+                }
+                if (v == Probe.Verdict.OK || v == Probe.Verdict.UNKNOWN) {
+                    if (fails > 0) AppLog.i("Автовыбор: связь восстановилась")
+                    fails = 0; delay(45_000); continue
+                }
+                // Нет сети вообще — туннель не виноват, переключать бессмысленно.
+                if (!Probe.underlyingOnline(context)) { fails = 0; delay(15_000); continue }
+                fails++; lastBad = v
+                val what = if (v == Probe.Verdict.FREEZE) "поток замораживается (короткие запросы проходят, длинные нет)" else "трафик не идёт"
+                AppLog.i("Автовыбор: «${AutoSwitch.label(profile)}» — $what ($fails/${AutoSwitch.FAILS_TO_SWITCH})")
+                if (fails < AutoSwitch.FAILS_TO_SWITCH) { delay(10_000); continue }
+
+                val now = System.currentTimeMillis()
+                failedAt[profile.id] = now
+                val next = AutoSwitch.next(group.items, profile, failedAt, now)
+                if (next == null) {
+                    val msg = "Ни один тип соединения сервера не работает в этой сети — пробую снова через 2 мин"
+                    AppLog.e("Автовыбор: $msg")
+                    _status.value = _status.value.copy(note = msg)
+                    fails = 0; delay(120_000); continue
+                }
+                val why = if (lastBad == Probe.Verdict.FREEZE) "замораживался" else "не работал"
+                val note = "«${AutoSwitch.label(profile)}» $why в этой сети → «${AutoSwitch.label(next)}»"
+                AppLog.i("Автовыбор: $note")
+                AutoSwitch.notify(context, note)
+                // start() отменит эту корутину — запускаем его отдельно.
+                scope.launch { start(next, autoNote = note) }
+                return@launch
+            }
+        }
     }
 
     // Трафик ядра sing-box: все его сокеты к серверу принадлежат нашему приложению.

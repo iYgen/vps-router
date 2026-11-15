@@ -157,6 +157,7 @@ fun HomeScreen(nav: NavController) {
                 fontSize = 13.sp, color = Pal.muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
             )
             st.error?.let { Text(it, color = Pal.danger, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
+            st.note?.let { Text("Автовыбор: " + it, color = Pal.accent2, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 6.dp)) }
         }
 
         if (up) {

@@ -169,6 +169,8 @@ data class AppSettings(
     val netBoost: Boolean = false,
     /** Подключать последний туннель при запуске приложения. */
     val autoConnect: Boolean = false,
+    /** Автовыбор протокола: если тип соединения заблокирован, перейти на следующий тип того же сервера. */
+    val autoSwitch: Boolean = true,
     val routeMode: RouteMode = RouteMode.ALL,
     /** Пакеты приложений для EXCLUDE_APPS / ONLY_APPS. */
     val apps: List<String> = emptyList(),
