@@ -23,21 +23,54 @@ object AwgFactory {
 
     fun publicFromPrivate(priv: String): String = KeyPair(Key.fromBase64(priv)).publicKey.toBase64()
 
-    /** Случайные, но валидные параметры (правила как в panel/src/Amnezia/AwgParams::validate). */
+    /**
+     * Случайные параметры профиля AmneziaWG 3.1 (правила как в panel/src/Amnezia/AwgParams::validate).
+     * - S1..S4 ≥ 12: из начала паддинга берётся nonce шифра заголовков (amneziawg-go это проверяет).
+     * - Размеры сообщений рукопожатия (148+S1, 92+S2, 64+S3) не должны совпадать.
+     * - H1..H4 = 1..4: тип сообщения всё равно скрыт шифрованием заголовков.
+     * - RandomTrailers не включаем: в тестах он резал скорость до ~0.1 МБ/с.
+     */
     fun randomObfs(): AwgObfs {
-        val jc = 4 + rnd.nextInt(7)          // 4..10
-        val jmin = 40 + rnd.nextInt(20)      // 40..59
-        val jmax = jmin + 20 + rnd.nextInt(60)
-        var s1: Int
-        var s2: Int
+        val jc = 3 + rnd.nextInt(4)          // 3..6 — мобильные сети не любят длинные серии
+        val jmin = 40 + rnd.nextInt(30)      // 40..69
+        val jmax = jmin + 30 + rnd.nextInt(120)
+        var s1: Int; var s2: Int; var s3: Int
         do {
             s1 = 15 + rnd.nextInt(136)       // 15..150
             s2 = 15 + rnd.nextInt(136)
-        } while (s1 + 56 == s2)
-        val hs = mutableSetOf<Long>()
-        while (hs.size < 4) hs += 5L + rnd.nextInt(Int.MAX_VALUE - 5)
-        val h = hs.toList()
-        return AwgObfs(jc, jmin, jmax, s1, s2, h[0], h[1], h[2], h[3])
+            s3 = 12 + rnd.nextInt(45)        // 12..56
+        } while (setOf(148 + s1, 92 + s2, 64 + s3).size < 3)
+        var s4: Int
+        do { s4 = 12 + rnd.nextInt(21) } while (s4 == 16)   // 12..32
+        val padLo = 16 + rnd.nextInt(32)
+        return AwgObfs(
+            jc, jmin, jmax, s1, s2, 1, 2, 3, 4, s3, s4,
+            hpk = headerProtectionKey(),
+            padding = "$padLo-${padLo + 64 + rnd.nextInt(48)}",
+            i1 = dnsLikeI1(),
+        )
+    }
+
+    fun headerProtectionKey(): String = Key.fromBytes(ByteArray(32).also { rnd.nextBytes(it) }).toBase64()
+
+    private val dnsNames = listOf("yandex.ru", "vk.com", "mail.ru", "ozon.ru", "avito.ru", "ya.ru", "dzen.ru", "rutube.ru")
+
+    /**
+     * I1 в виде ответа DNS на A-запрос популярного домена: случайный ID, флаги ответа,
+     * вопрос, две A-записи со случайными адресами и EDNS. Пакет из одних случайных байт
+     * часть мобильных сетей отбрасывает, а «похожий на что-то» проходит.
+     */
+    fun dnsLikeI1(): String {
+        val name = dnsNames[rnd.nextInt(dnsNames.size)]
+        val q = buildString {
+            name.split('.').forEach { l -> append("%02x".format(l.length)); l.forEach { append("%02x".format(it.code)) } }
+            append("00" + "0001" + "0001")
+        }
+        fun ttl() = "%08x".format(60 + rnd.nextInt(3540))
+        return "<r 2><b 0x81800001000200000001$q>" +
+            "<b 0xc00c00010001${ttl()}0004><r 4>" +
+            "<b 0xc00c00010001${ttl()}0004><r 4>" +
+            "<b 0x0000291000000000000000>"
     }
 
     fun randomPort(): Int = 30000 + rnd.nextInt(30000)
@@ -88,7 +121,7 @@ object AwgFactory {
         append("PresharedKey = ${p.presharedKey}\n")
         append("AllowedIPs = 0.0.0.0/0, ::/0\n")
         append("Endpoint = ${hostForEndpoint(endpointHost)}:${s.port}\n")
-        append("PersistentKeepalive = 25\n")
+        append("PersistentKeepalive = ${s.obfs.keepalive}\n")
     }
 
     private fun hostForEndpoint(h: String) = if (h.contains(':') && !h.startsWith("[")) "[$h]" else h

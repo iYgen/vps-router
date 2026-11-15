@@ -46,13 +46,21 @@ log "Интерфейс в интернет: $WAN_IF"
 
 mkdir -p /etc/amnezia
 umask 077
+# Секция [Interface] (ключ, порт, параметры обфускации): awg syncconf не убирает из неё
+# параметры, поэтому при её изменении (например, переход на AmneziaWG 3.1) интерфейс перезапускается.
+iface_section() { [ -f "$1" ] && sed '/^\[Peer\]/,$d' "$1" | grep -v "^#" | md5sum | cut -d" " -f1; }
+OLD_IFACE=$(iface_section "$CONF" || true)
 jq -r '.conf' "$PARAMS_FILE" | sed "s/__WAN_IF__/$WAN_IF/g" > "$CONF.new"
 chmod 600 "$CONF.new"
 mv -f "$CONF.new" "$CONF"
 
 enable_ip_forward
 
-if ip link show "$IFACE" >/dev/null 2>&1; then
+if ip link show "$IFACE" >/dev/null 2>&1 && [ -n "$OLD_IFACE" ] && [ "$OLD_IFACE" != "$(iface_section "$CONF")" ]; then
+    log "Параметры интерфейса изменились — перезапускаю $IFACE"
+    awg-quick down "$CONF" 2>/dev/null || ip link del "$IFACE" 2>/dev/null || true
+    awg-quick up "$CONF"
+elif ip link show "$IFACE" >/dev/null 2>&1; then
     log "Интерфейс $IFACE уже поднят — применяю пиров без разрыва (awg syncconf)"
     TMP=$(mktemp)
     awg-quick strip "$CONF" > "$TMP"
@@ -87,5 +95,6 @@ systemctl enable "$UNIT" >/dev/null 2>&1 || true
 open_port "$PORT/udp"
 
 PEERS=$(awg show "$IFACE" peers 2>/dev/null | wc -l || echo 0)
-log "Готово: $IFACE слушает UDP $PORT, пиров: $PEERS"
+if grep -q "^HeaderProtectionKey" "$CONF"; then PROFILE="3.1"; else PROFILE="1.x"; fi
+log "Готово: $IFACE слушает UDP $PORT, пиров: $PEERS, профиль AmneziaWG $PROFILE ($(awg --version 2>/dev/null | awk '{print $2}'))"
 log "Не забудьте открыть UDP $PORT во внешнем файрволе хостера (группы безопасности), если он есть."

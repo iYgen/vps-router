@@ -385,6 +385,12 @@ class Provisioner
         $client = self::generateX25519Keypair();
         $port = (int) ($es['endpoint_port'] ?: 51900);
         $subnet = self::deterministicSubnet((int) $es['id']);
+        // Обе стороны туннеля переустанавливаются вместе (ключи новые), поэтому здесь же
+        // старый профиль обфускации заменяется на AmneziaWG 3.1.
+        $amnezia = !empty($es['amnezia_params']) ? (json_decode($es['amnezia_params'], true) ?: []) : [];
+        if (!\App\Amnezia\AwgProfile::isV3($amnezia)) {
+            $amnezia = \App\Amnezia\AwgProfile::random31();
+        }
 
         $params = [
             'interface_name' => $es['interface_name'] ?: ('awg-panel-' . $es['id']),
@@ -393,7 +399,7 @@ class Provisioner
             'local_address' => "$subnet.1/24",
             'peer_public_key' => $client['public'],
             'peer_allowed_ip' => "$subnet.2/32",
-            'amnezia_params' => !empty($es['amnezia_params']) ? json_decode($es['amnezia_params'], true) : null,
+            'amnezia_params' => $amnezia,
         ];
 
         $dbUpdate = [
@@ -401,6 +407,7 @@ class Provisioner
             'wg_local_privkey' => $client['private'],
             'wg_local_address' => "$subnet.2/32",
             'interface_name' => $params['interface_name'],
+            'amnezia_params' => json_encode($amnezia, JSON_UNESCAPED_SLASHES),
         ];
 
         return [self::scriptsDir() . '/exit-amneziawg.sh', $params, $dbUpdate];
@@ -531,7 +538,7 @@ class Provisioner
             'private_key' => $keypair['private'],
             'public_key' => $keypair['public'],
             'short_id' => $params['reality']['short_id'] ?: bin2hex(random_bytes(4)),
-            'server_name' => $params['reality']['server_name'] ?: 'www.microsoft.com',
+            'server_name' => $params['reality']['server_name'] ?: 'addons.mozilla.org',
         ]);
 
         ExitServer::update((int) $es['id'], ['protocol_params' => $params] + self::currentRow($es));

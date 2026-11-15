@@ -46,6 +46,16 @@ class AwgKernel
         return self::which('amneziawg-go');
     }
 
+    /** amneziawg-tools версии 3.x (понимает HeaderProtectionKey и другие параметры 3.1). */
+    public static function toolsV3(): bool
+    {
+        if (!function_exists('shell_exec')) {
+            return false;
+        }
+        $out = @shell_exec('awg --version 2>/dev/null');
+        return is_string($out) && preg_match('/\bv3\./', $out) === 1;
+    }
+
     /** Можно ли реально поднять AmneziaWG-интерфейс на этом узле. */
     public static function usable(): bool
     {

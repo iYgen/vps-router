@@ -743,7 +743,7 @@ class DeviceInbounds
                         'PublicKey = ' . $serverPub,
                         'Endpoint = ' . self::uriHost($host) . ':' . $port,
                         'AllowedIPs = 0.0.0.0/0',
-                        'PersistentKeepalive = 25'
+                        'PersistentKeepalive = ' . ($protocol === 'amneziawg' ? \App\Amnezia\AwgProfile::keepalive(self::amneziaParams()) : '25')
                     );
                     $conf = implode("\n", $lines) . "\n";
                     // Имя файла = имя туннеля в приложении: только [A-Za-z0-9_=+.-], до 15 символов.
@@ -936,22 +936,25 @@ class DeviceInbounds
         return is_array($params) ? $params : self::randomAmneziaParams();
     }
 
-    /** Случайные параметры обфускации: у каждой установки свои — сложнее сигнатурно детектировать. */
+    /** Случайные параметры обфускации AmneziaWG 3.1: у каждой установки свои — сложнее сигнатурно детектировать. */
     private static function randomAmneziaParams(): array
     {
-        $s1 = random_int(15, 150);
-        do {
-            $s2 = random_int(15, 150);
-        } while ($s1 + 56 === $s2);
-        $h = [];
-        while (count($h) < 4) {
-            $h[random_int(5, 2147483647)] = true;
-        }
-        $h = array_keys($h);
-        return [
-            'Jc' => random_int(3, 6), 'Jmin' => 40, 'Jmax' => 70,
-            'S1' => $s1, 'S2' => $s2,
-            'H1' => $h[0], 'H2' => $h[1], 'H3' => $h[2], 'H4' => $h[3],
-        ];
+        return \App\Amnezia\AwgProfile::random31();
+    }
+
+    /** Профиль AWG-входа устройств: '3.1' или '1.x' (старый, до перехода). */
+    public static function amneziaProfile(): string
+    {
+        return \App\Amnezia\AwgProfile::isV3(self::amneziaParams()) ? '3.1' : '1.x';
+    }
+
+    /**
+     * Перевод AWG-входа устройств на профиль 3.1: новые параметры. Ключи сервера и устройств
+     * не меняются, но конфиги AmneziaWG на всех устройствах надо получить заново
+     * (приложение VPS Router подтягивает их само при синхронизации).
+     */
+    public static function upgradeAmneziaTo31(): void
+    {
+        self::cfgset('inbound_amneziawg_params', json_encode(\App\Amnezia\AwgProfile::random31(), JSON_UNESCAPED_SLASHES));
     }
 }

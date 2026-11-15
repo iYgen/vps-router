@@ -451,10 +451,25 @@ install_wireguard_tools() {
 # AmneziaWG нет в стандартных репозиториях — подключаем официальные:
 # Ubuntu — PPA amnezia/ppa, Debian — тот же PPA (сборка под focal),
 # RHEL/Fedora — COPR amneziavpn/amneziawg. Нужны заголовки ядра (DKMS).
+# Нужна версия 3.x (шифрование заголовков, HeaderProtectionKey): старая 1.x/2.x
+# обновляется, после обновления модуль ядра перезагружается с подъёмом интерфейсов.
+# Если модуль ядра не встаёт (LXC/OpenVZ, нет заголовков) — собираем amneziawg-go,
+# awg-quick сам переключается на него.
+AWG_GO_TAG="v3.1.20260828"
+
+awg_tools_v3() { awg --version 2>/dev/null | grep -q 'v3\.'; }
+
 install_amneziawg() {
     [ -n "${PKG:-}" ] || detect_os
-    command -v awg-quick >/dev/null 2>&1 && return 0
-    _lib_log "$(_t "Ставлю AmneziaWG (модуль ядра + amneziawg-tools)..." "Installing AmneziaWG (kernel module + amneziawg-tools)...")"
+    if command -v awg-quick >/dev/null 2>&1 && awg_tools_v3; then
+        awg_ensure_backend
+        return $?
+    fi
+    if command -v awg-quick >/dev/null 2>&1; then
+        _lib_log "$(_t "AmneziaWG $(awg --version 2>/dev/null | awk '{print $2}') устарел — обновляю до 3.1..." "AmneziaWG is outdated — upgrading to 3.1...")"
+    else
+        _lib_log "$(_t "Ставлю AmneziaWG 3.1 (модуль ядра + amneziawg-tools)..." "Installing AmneziaWG 3.1 (kernel module + amneziawg-tools)...")"
+    fi
     case "$PKG" in
         apt)
             pkg_install ca-certificates gnupg curl "linux-headers-$(uname -r)" >/dev/null 2>&1 \
@@ -474,19 +489,77 @@ install_amneziawg() {
             pkg_install dnf-plugins-core "kernel-devel-$(uname -r)" >/dev/null 2>&1 || pkg_install dnf-plugins-core || true
             ensure_epel
             dnf copr enable -y amneziavpn/amneziawg || true
-            pkg_install amneziawg-dkms amneziawg-tools || pkg_install amneziawg-tools || true ;;
+            pkg_install amneziawg-dkms amneziawg-tools || pkg_install amneziawg-tools || true
+            dnf upgrade -y -q amneziawg-dkms amneziawg-tools >/dev/null 2>&1 || true ;;
         yum)
             pkg_install yum-plugin-copr "kernel-devel-$(uname -r)" >/dev/null 2>&1 || true
             ensure_epel
             yum copr enable -y amneziavpn/amneziawg || true
-            pkg_install amneziawg-dkms amneziawg-tools || pkg_install amneziawg-tools || true ;;
+            pkg_install amneziawg-dkms amneziawg-tools || pkg_install amneziawg-tools || true
+            yum update -y -q amneziawg-dkms amneziawg-tools >/dev/null 2>&1 || true ;;
         *) pkg_install amneziawg-tools || true ;;
     esac
-    modprobe amneziawg 2>/dev/null || _lib_log "$(_t "WARN: модуль ядра amneziawg не загрузился (нужны заголовки ядра / перезагрузка после обновления ядра)" "WARN: amneziawg kernel module did not load (needs kernel headers / reboot after a kernel update)")"
     command -v awg-quick >/dev/null 2>&1 || {
         _lib_log "$(_t "ERROR: не удалось установить AmneziaWG на $OS_ID $OS_VER — поставьте вручную по https://github.com/amnezia-vpn/amneziawg-linux-kernel-module" "ERROR: failed to install AmneziaWG on $OS_ID $OS_VER — install manually per https://github.com/amnezia-vpn/amneziawg-linux-kernel-module")"
         return 1
     }
+    awg_tools_v3 || _lib_log "$(_t "WARN: amneziawg-tools после установки не 3.x ($(awg --version 2>/dev/null)) — профиль 3.1 может не подняться" "WARN: amneziawg-tools is not 3.x after install")"
+    awg_ensure_backend
+}
+
+# Модуль ядра загружен и свежий; иначе — amneziawg-go. Старый загруженный модуль
+# (после обновления пакета) выгружается: интерфейсы опускаются и поднимаются обратно.
+awg_ensure_backend() {
+    if [ -e /sys/module/amneziawg ]; then
+        local loaded disk ifs i c
+        loaded=$(cat /sys/module/amneziawg/srcversion 2>/dev/null || true)
+        disk=$(modinfo -F srcversion amneziawg 2>/dev/null || true)
+        if [ -n "$disk" ] && [ -n "$loaded" ] && [ "$loaded" != "$disk" ]; then
+            _lib_log "$(_t "Перезагружаю обновлённый модуль ядра amneziawg..." "Reloading the updated amneziawg kernel module...")"
+            ifs=$(awg show interfaces 2>/dev/null || true)
+            for i in $ifs; do ip link del "$i" 2>/dev/null || true; done
+            rmmod amneziawg 2>/dev/null || true
+            modprobe amneziawg 2>/dev/null || true
+            for i in $ifs; do
+                for c in "/etc/amnezia/amneziawg/$i.conf" "/etc/amnezia/$i.conf"; do
+                    if [ -f "$c" ]; then awg-quick up "$c" >/dev/null 2>&1 || _lib_log "WARN: $i не поднялся после обновления"; break; fi
+                done
+            done
+        fi
+        return 0
+    fi
+    modprobe amneziawg 2>/dev/null && return 0
+    command -v amneziawg-go >/dev/null 2>&1 && return 0
+    _lib_log "$(_t "Модуль ядра amneziawg не загрузился (контейнер LXC/OpenVZ или нет заголовков ядра) — собираю amneziawg-go ${AWG_GO_TAG}..." "amneziawg kernel module unavailable — building amneziawg-go ${AWG_GO_TAG}...")"
+    install_amneziawg_go
+}
+
+install_amneziawg_go() {
+    local arch goarch gover tmp
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64) goarch=amd64 ;;
+        aarch64|arm64) goarch=arm64 ;;
+        armv7l|armv6l) goarch=armv6l ;;
+        *) _lib_log "ERROR: amneziawg-go: неизвестная архитектура $arch"; return 1 ;;
+    esac
+    pkg_install git make tar curl >/dev/null 2>&1 || true
+    tmp=$(mktemp -d)
+    gover=$(curl -fsSL 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)
+    [ -n "$gover" ] || gover=go1.25.5
+    if ! curl -fsSL "https://go.dev/dl/${gover}.linux-${goarch}.tar.gz" | tar -xz -C "$tmp"; then
+        _lib_log "ERROR: не скачался Go $gover"; rm -rf "$tmp"; return 1
+    fi
+    if ! git clone -q --depth 1 --branch "$AWG_GO_TAG" https://github.com/amnezia-vpn/amneziawg-go "$tmp/src"; then
+        _lib_log "ERROR: не скачался amneziawg-go"; rm -rf "$tmp"; return 1
+    fi
+    if ( cd "$tmp/src" && PATH="$tmp/go/bin:$PATH" GOPATH="$tmp/gopath" GOCACHE="$tmp/cache" make >/dev/null ); then
+        install -m 755 "$tmp/src/amneziawg-go" /usr/local/bin/amneziawg-go
+        _lib_log "$(_t "amneziawg-go ${AWG_GO_TAG} установлен (работает без модуля ядра, чуть медленнее)" "amneziawg-go ${AWG_GO_TAG} installed")"
+    else
+        _lib_log "ERROR: сборка amneziawg-go не удалась"; rm -rf "$tmp"; return 1
+    fi
+    rm -rf "$tmp"
 }
 # ------------------------------- конец _lib.sh -------------------------------
 

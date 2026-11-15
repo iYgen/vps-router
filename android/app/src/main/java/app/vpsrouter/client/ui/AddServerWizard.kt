@@ -185,7 +185,7 @@ fun AddServerWizard(nav: NavController) {
                             Text("AmneziaWG", fontWeight = FontWeight.SemiBold)
                             Field(awgPort, { awgPort = it.filter(Char::isDigit) }, "UDP-порт", number = true)
                             Field(client, { client = it }, "Имя первого клиента (этот телефон)")
-                            Muted("Обфускация: Jc=${obfs.jc} Jmin=${obfs.jmin} Jmax=${obfs.jmax} S1=${obfs.s1} S2=${obfs.s2} H1..H4 случайные")
+                            Muted("${obfs.versionLabel}: заголовки зашифрованы, паддинг S1–S4 ${obfs.s1}/${obfs.s2}/${obfs.s3}/${obfs.s4}, Jc=${obfs.jc}, первый пакет похож на ответ DNS. Подключаться можно этим приложением, AmneziaVPN 5.0.1.5+ или AmneziaWG 3.1.4+.")
                             TextButton(onClick = { obfs = AwgFactory.randomObfs() }) { Text("Сгенерировать заново") }
                         }
 

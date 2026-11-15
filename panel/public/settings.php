@@ -55,7 +55,8 @@ $fields = [
     'reality_handshake' => [t('field.reality_handshake'), '127.0.0.1:8443'],
 ];
 $secretFields = ['reality_private_key'];
-$popularSniDomains = ['www.microsoft.com', 'www.apple.com', 'addons.mozilla.org', 'www.amazon.com', 'www.samsung.com', 'gateway.icloud.com', 'www.swift.org'];
+// Без microsoft/apple/google/icloud/amazon — см. комментарий у Installer::POPULAR_SNI.
+$popularSniDomains = ['addons.mozilla.org', 'www.samsung.com', 'www.swift.org'];
 
 /**
  * Панель ставится на разные серверы с разной сетевой топологией — поэтому
@@ -212,6 +213,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             View::applyResultFlash($result);
             if (($result['exit_code'] ?? 1) === 0) {
                 View::flash('success', 'Протоколы применены. Ссылки/файлы для каждого протокола — на странице «Устройства». Если у хостера есть свой firewall в панели управления — откройте там порты: ' . implode(', ', DeviceInbounds::openPorts()) . '.');
+            }
+        } elseif ($action === 'upgrade_awg') {
+            DeviceInbounds::upgradeAmneziaTo31();
+            AuditLog::record('settings.upgrade_awg', "AmneziaWG 3.1 (router=$routerId)");
+            $result = (new Applier())->apply(Auth::username() ?? 'system', 'вход AmneziaWG → 3.1', $routerId);
+            View::applyResultFlash($result);
+            if (($result['exit_code'] ?? 1) === 0) {
+                View::flash('success', 'Вход AmneziaWG переведён на 3.1. Скачайте конфиги AmneziaWG на устройства заново (страница «Устройства»); приложение VPS Router обновит их само.');
             }
         } elseif ($action === 'save_adblock') {
             $sset('adblock_enabled', !empty($_POST['adblock_enabled']) ? '1' : '0');

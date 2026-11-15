@@ -114,10 +114,29 @@ use App\RiskScanner;
           </td>
         </tr>
         <?php endif; ?>
+        <?php if ($protocol === 'amneziawg' && DeviceInbounds::isEnabled('amneziawg')): $awgProfile = DeviceInbounds::amneziaProfile(); ?>
+        <tr>
+          <td></td>
+          <td colspan="2" style="font-size:13px">
+            <?php if ($awgProfile === '3.1'): ?>
+              <span style="color:var(--ok)">AmneziaWG 3.1</span> — заголовки зашифрованы, случайный паддинг, первый пакет похож на ответ DNS.
+              Клиенты: AmneziaVPN 5.0.1.5+, AmneziaWG 3.1.4+, VPS Router 0.9.0+.
+            <?php else: ?>
+              <span style="color:var(--danger)">AmneziaWG 1.x (устаревший профиль)</span> — его проще распознать.
+              <button type="submit" form="awg-upgrade-form" class="secondary" style="margin-left:8px">Перейти на 3.1</button>
+              <br><span class="muted">После перехода конфиги AmneziaWG на всех устройствах нужно получить заново (VPS Router обновит их сам). Нужны клиенты AmneziaVPN 5.0.1.5+ или AmneziaWG 3.1.4+.</span>
+            <?php endif; ?>
+          </td>
+        </tr>
+        <?php endif; ?>
       <?php endforeach; ?>
     </table>
     <p class="muted"><?= htmlspecialchars(t('settings.protocols.footer')) ?></p>
     <div style="margin-top:12px"><button type="submit"><?= htmlspecialchars(t('common.save_apply')) ?></button></div>
+  </form>
+  <form method="post" id="awg-upgrade-form" onsubmit="return confirm('Перевести вход AmneziaWG на 3.1? Старые конфиги AmneziaWG на устройствах перестанут работать — их нужно будет получить заново.')">
+    <?= Auth::csrfField() ?>
+    <input type="hidden" name="action" value="upgrade_awg">
   </form>
 </div>
 

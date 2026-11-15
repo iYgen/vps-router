@@ -96,6 +96,20 @@ class LocalOps(private val context: Context, private val repo: Repository) {
         return importPeerTunnel(serverId, peer.id)
     }
 
+    /**
+     * Перевод своего AWG-сервера на профиль 3.1: новые параметры обфускации, обновление
+     * amneziawg на сервере (это делает awg-server.sh) и перевыпуск туннелей в приложении.
+     * Конфиги, отправленные на другие устройства, после этого надо выдать заново.
+     */
+    suspend fun upgradeAwgTo31(serverId: String, log: (String) -> Unit) {
+        val s = repo.server(serverId) ?: error("Сервер не найден")
+        val awg = s.awg ?: error("На сервере не настроен AmneziaWG")
+        val next = awg.copy(obfs = AwgFactory.randomObfs(), mtu = 1280)
+        if (!pushAwg(s, next, log)) throw SshException("Не удалось перейти на AmneziaWG 3.1 — см. журнал")
+        repo.updateServer(serverId) { it.copy(awg = next) }
+        next.peers.forEach { importPeerTunnel(serverId, it.id) }
+    }
+
     private suspend fun pushAwg(s: ManagedServer, awg: app.vpsrouter.client.data.AwgServerState, log: (String) -> Unit): Boolean {
         val params = buildJsonObject {
             put("iface", awg.iface)

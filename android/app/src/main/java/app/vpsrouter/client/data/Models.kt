@@ -46,14 +46,39 @@ data class PortSpec(val port: Int, val proto: String = "tcp") {
     }
 }
 
-/** Параметры обфускации AmneziaWG 1.x (совместимы с amneziawg-tools 1.x и 2.x). */
+/**
+ * Параметры обфускации AmneziaWG. Без [hpk] — старый профиль 1.x (так сохранены серверы,
+ * созданные до 0.9.0; их конфиг не меняется). С [hpk] — профиль 3.1: заголовки зашифрованы
+ * ключом, у пакетов случайный паддинг, перед рукопожатием — пакет, похожий на ответ DNS.
+ * Сервер с 3.1 понимают только клиенты 3.1 (AmneziaVPN ≥ 5.0.1.5, AmneziaWG ≥ 3.1.4, это приложение).
+ */
 @Serializable
 data class AwgObfs(
     val jc: Int = 4, val jmin: Int = 40, val jmax: Int = 70,
     val s1: Int = 0, val s2: Int = 0,
     val h1: Long = 1, val h2: Long = 2, val h3: Long = 3, val h4: Long = 4,
+    val s3: Int = 0, val s4: Int = 0,
+    /** HeaderProtectionKey (32 байта base64) — общий для сервера и всех клиентов. */
+    val hpk: String? = null,
+    /** ContentPaddingAddition — случайный добавочный паддинг, «мин-макс». */
+    val padding: String? = null,
+    /** I1 — маскировочный пакет перед рукопожатием (теги <b 0x..>, <r N>). */
+    val i1: String? = null,
 ) {
-    fun lines(): String = "Jc = $jc\nJmin = $jmin\nJmax = $jmax\nS1 = $s1\nS2 = $s2\nH1 = $h1\nH2 = $h2\nH3 = $h3\nH4 = $h4\n"
+    val isV3: Boolean get() = hpk != null
+    val versionLabel: String get() = if (isV3) "AmneziaWG 3.1" else "AmneziaWG 1.x (устарел)"
+
+    fun lines(): String = buildString {
+        append("Jc = $jc\nJmin = $jmin\nJmax = $jmax\nS1 = $s1\nS2 = $s2\n")
+        if (s3 > 0 || s4 > 0) append("S3 = $s3\nS4 = $s4\n")
+        append("H1 = $h1\nH2 = $h2\nH3 = $h3\nH4 = $h4\n")
+        i1?.let { append("I1 = $it\n") }
+        hpk?.let { append("HeaderProtectionKey = $it\n") }
+        padding?.let { append("ContentPaddingAddition = $it\n") }
+    }
+
+    /** Интервал keepalive клиента: у 3.1 — случайный в диапазоне (ровный интервал — примета для DPI). */
+    val keepalive: String get() = if (isV3) "22-30" else "25"
 }
 
 val TunnelProfile.isSingbox: Boolean get() = kind == "singbox"

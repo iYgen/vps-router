@@ -63,7 +63,7 @@ class AmneziaConfigBuilder
         }
         $lines[] = 'Endpoint = ' . $es['endpoint_host'] . ':' . $es['endpoint_port'];
         $lines[] = 'AllowedIPs = 0.0.0.0/0, ::/0';
-        $lines[] = 'PersistentKeepalive = 25';
+        $lines[] = 'PersistentKeepalive = ' . \App\Amnezia\AwgProfile::keepalive($amnezia);
         $lines[] = '';
 
         return implode("\n", $lines);

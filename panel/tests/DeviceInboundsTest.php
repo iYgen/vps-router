@@ -77,6 +77,23 @@ class DeviceInboundsTest extends TestCase
         $this->assertStringContainsString('ListenPort = 38021', $awg);
         $this->assertContains('8443/udp', DeviceInbounds::openPorts());
         $this->assertContains('9443/tcp', DeviceInbounds::openPorts());
+
+        // Новый вход AmneziaWG — сразу 3.1, ключ заголовков одинаковый у сервера и устройства.
+        $this->assertSame('3.1', DeviceInbounds::amneziaProfile());
+        preg_match('/^HeaderProtectionKey = (\S+)$/m', $awg, $m);
+        $this->assertNotEmpty($m[1] ?? null);
+        $this->assertStringContainsString('HeaderProtectionKey = ' . $m[1], $configs['amneziawg']['file']);
+        $this->assertStringContainsString('PersistentKeepalive = 22-30', $configs['amneziawg']['file']);
+        $this->assertStringContainsString('PersistentKeepalive = 25', $configs['wireguard']['file']);
+    }
+
+    public function testOldAmneziaProfileUpgradesTo31(): void
+    {
+        DeviceInbounds::saveSettings(self::ALL_ON);
+        Setting::set('inbound_amneziawg_params', json_encode(['Jc' => 4, 'Jmin' => 40, 'Jmax' => 70, 'S1' => 0, 'S2' => 0, 'H1' => 1, 'H2' => 2, 'H3' => 3, 'H4' => 4]));
+        $this->assertSame('1.x', DeviceInbounds::amneziaProfile());
+        DeviceInbounds::upgradeAmneziaTo31();
+        $this->assertSame('3.1', DeviceInbounds::amneziaProfile());
     }
 
     public function testAppOutboundsForSingboxProtocols(): void

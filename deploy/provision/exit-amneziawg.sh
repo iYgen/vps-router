@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Поднимает НОВЫЙ, изолированный AmneziaWG v1 (awg-quick) интерфейс на
+# Поднимает НОВЫЙ, изолированный AmneziaWG (awg-quick, профиль 3.1) интерфейс на
 # exit-сервере — отдельно от любых уже существующих Amnezia-докеров/туннелей
 # (см. docs/infrastructure-ui.md, раздел про мультипротокольные exit-цели).
 # Идемпотентен: повторный запуск с теми же параметрами просто перезаписывает
@@ -15,7 +15,7 @@
 #   peer_public_key      — публичный ключ входной VPS (клиента)
 #   peer_preshared_key   — опционально
 #   peer_allowed_ip       — адрес клиента в туннеле, напр. "10.90.0.2/32"
-#   amnezia_params        — объект {Jc,Jmin,Jmax,S1,S2,H1,H2,H3,H4}, опционально
+#   amnezia_params        — объект параметров обфускации (1.x или 3.1, см. panel/src/Amnezia/AwgParams.php)
 
 set -euo pipefail
 
@@ -35,15 +35,14 @@ PEER_PUBKEY=$(jq -r '.peer_public_key' "$PARAMS_FILE")
 PEER_PSK=$(jq -r '.peer_preshared_key // empty' "$PARAMS_FILE")
 PEER_ALLOWED_IP=$(jq -r '.peer_allowed_ip' "$PARAMS_FILE")
 
-Jc=$(jq -r '.amnezia_params.Jc // 4' "$PARAMS_FILE")
-Jmin=$(jq -r '.amnezia_params.Jmin // 40' "$PARAMS_FILE")
-Jmax=$(jq -r '.amnezia_params.Jmax // 70' "$PARAMS_FILE")
-S1=$(jq -r '.amnezia_params.S1 // 0' "$PARAMS_FILE")
-S2=$(jq -r '.amnezia_params.S2 // 0' "$PARAMS_FILE")
-H1=$(jq -r '.amnezia_params.H1 // 1' "$PARAMS_FILE")
-H2=$(jq -r '.amnezia_params.H2 // 2' "$PARAMS_FILE")
-H3=$(jq -r '.amnezia_params.H3 // 3' "$PARAMS_FILE")
-H4=$(jq -r '.amnezia_params.H4 // 4' "$PARAMS_FILE")
+# Параметры обфускации: значения по умолчанию 1.x + всё, что прислала панель (в т.ч. 3.1:
+# S3/S4, I1-I5, HeaderProtectionKey, ContentPaddingAddition...). Только известные ключи,
+# значения без переводов строк — чтобы из JSON нельзя было дописать в конфиг лишнее.
+AWG_KEYS='["Jc","Jmin","Jmax","S1","S2","S3","S4","H1","H2","H3","H4","I1","I2","I3","I4","I5","HeaderProtectionKey","ContentPaddingAddition","RekeyAfterTime","RekeyTimeout","RejectAfterTime","KeepaliveTimeout","MaxHandshakeAttempts","RandomTrailers","DisableCookies"]'
+OBFS_LINES=$(jq -r --argjson keys "$AWG_KEYS" '
+    ({Jc:4,Jmin:40,Jmax:70,S1:0,S2:0,H1:1,H2:2,H3:3,H4:4} + (.amnezia_params // {})) as $p
+    | $keys[] | select($p[.] != null)
+    | "\(.) = \($p[.] | tostring | gsub("[\r\n]"; ""))"' "$PARAMS_FILE")
 
 for v in "$IFACE" "$LISTEN_PORT" "$SERVER_PRIVKEY" "$LOCAL_ADDRESS" "$PEER_PUBKEY" "$PEER_ALLOWED_IP"; do
     [ -n "$v" ] && [ "$v" != "null" ] || { log "ERROR: не все обязательные параметры заданы"; exit 1; }
@@ -57,15 +56,7 @@ mkdir -p /etc/amnezia
     echo "PrivateKey = $SERVER_PRIVKEY"
     echo "Address = $LOCAL_ADDRESS"
     echo "ListenPort = $LISTEN_PORT"
-    echo "Jc = $Jc"
-    echo "Jmin = $Jmin"
-    echo "Jmax = $Jmax"
-    echo "S1 = $S1"
-    echo "S2 = $S2"
-    echo "H1 = $H1"
-    echo "H2 = $H2"
-    echo "H3 = $H3"
-    echo "H4 = $H4"
+    echo "$OBFS_LINES"
     echo "PostUp = iptables -I FORWARD -i %i -j ACCEPT; iptables -I FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o $WAN_IF -j MASQUERADE"
     echo "PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o $WAN_IF -j MASQUERADE"
     echo ""

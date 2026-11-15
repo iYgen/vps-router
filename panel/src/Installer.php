@@ -18,7 +18,10 @@ use App\Models\Setting;
  */
 class Installer
 {
-    private const POPULAR_SNI = ['www.microsoft.com', 'www.apple.com', 'addons.mozilla.org', 'www.samsung.com', 'gateway.icloud.com'];
+    // Камуфляж Reality по умолчанию. microsoft/apple/google/icloud не берём: с 2026 года ТСПУ
+    // сверяет SNI с сетью (ASN) сервера, а эти домены — самые частые у VPN и первыми в его списках.
+    // Лучший вариант — свой домен с настоящим сайтом на этом же сервере (self-steal).
+    private const POPULAR_SNI = ['addons.mozilla.org', 'www.samsung.com', 'www.swift.org'];
 
     /**
      * Постоянный маркер «панель уже установлена». Пишется при создании первого

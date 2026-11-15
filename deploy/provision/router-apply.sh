@@ -94,7 +94,8 @@ jq -r '.awg_inbound_env // ""' "$PARAMS" > "$AWG_ENV"
 jq -r '.open_ports // ""' "$PARAMS" > "$PORTS_LIST"
 
 # AmneziaWG нужен только если есть хоть один awg-конфиг.
-if [ "$have_amnezia" = 1 ] && ! command -v awg-quick >/dev/null 2>&1; then
+# install_amneziawg сам обновит старую 1.x/2.x до 3.1 (нужно для HeaderProtectionKey).
+if [ "$have_amnezia" = 1 ] && { ! command -v awg-quick >/dev/null 2>&1 || ! awg_tools_v3; }; then
     install_amneziawg || log "WARN: AmneziaWG не установлен — туннели AmneziaWG работать не будут"
 fi
 

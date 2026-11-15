@@ -28,12 +28,14 @@ class Applier
         }
         // AmneziaWG: параметры обфускации exit'ов + поддержка на самом узле.
         $hasAwg = false;
+        $hasV3 = DeviceInbounds::isEnabled('amneziawg') && DeviceInbounds::amneziaProfile() === '3.1';
         foreach (Models\ExitServer::all() as $es) {
             if (($es['protocol'] ?? 'amneziawg') !== 'amneziawg' || ($es['status'] ?? '') === 'disabled') {
                 continue;
             }
             $hasAwg = true;
             $params = !empty($es['amnezia_params']) ? (json_decode((string) $es['amnezia_params'], true) ?: []) : [];
+            $hasV3 = $hasV3 || \App\Amnezia\AwgProfile::isV3($params);
             foreach (\App\Amnezia\AwgParams::validate($params) as $m) {
                 $issues[] = ['level' => 'error', 'message' => "AmneziaWG «{$es['name']}»: $m"];
             }
@@ -41,6 +43,10 @@ class Applier
         // Проверка окружения — только для self-узла (у удалённого роутера своё).
         $self = Models\Server::self();
         $isSelf = $routerServerId === null || ($self !== null && (int) $self['id'] === $routerServerId);
+        $needV3 = $hasV3;
+        if ($needV3 && $isSelf && \App\Amnezia\AwgKernel::toolAvailable() && !\App\Amnezia\AwgKernel::toolsV3()) {
+            $issues[] = ['level' => 'error', 'message' => 'Параметры AmneziaWG 3.1, а на этом узле amneziawg-tools старее 3.x — интерфейс не поднимется. Обновите: sudo bash deploy/install.sh (или переустановите узел из панели).'];
+        }
         if ($hasAwg && $isSelf && !\App\Amnezia\AwgKernel::usable()) {
             $issues[] = ['level' => 'warning', 'message' => 'На этом узле не обнаружены инструменты/модуль AmneziaWG (awg-quick + kernel-модуль или amneziawg-go) — туннели к AmneziaWG-exit могут не подняться. Установите amneziawg-tools.'];
         }

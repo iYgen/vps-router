@@ -363,7 +363,7 @@ button { padding:10px 18px; border:none; border-radius:8px; background:var(--acc
   function renderReality() {
     body.innerHTML = '<h2>' + esc(L.step_reality) + '</h2><p class="muted">' + esc(L.reality_desc) + '</p>' +
       (DETECTED_IP ? '<p class="muted">' + esc(L.detected) + ' <b>' + esc(DETECTED_IP) + '</b></p>' : '') +
-      '<label>' + esc(L.sni) + '</label><input id="wz-sni" placeholder="www.microsoft.com" value="' + esc(state.sni) + '">' +
+      '<label>' + esc(L.sni) + '</label><input id="wz-sni" placeholder="addons.mozilla.org" value="' + esc(state.sni) + '">' +
       nav(true, L.next);
     bindNav(function () { state.sni = document.getElementById('wz-sni').value.trim(); go(1); });
   }

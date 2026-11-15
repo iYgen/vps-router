@@ -60,6 +60,7 @@ fun ServerDetailScreen(id: String, nav: NavController) {
     var delPeer by remember { mutableStateOf<AwgPeer?>(null) }
     var delServer by remember { mutableStateOf(false) }
     var removeRole by remember { mutableStateOf(false) }
+    var upgrade by remember { mutableStateOf(false) }
     var editPorts by remember { mutableStateOf<String?>(null) }
 
     fun act(label: String, block: suspend () -> Unit) = scope.launch {
@@ -114,8 +115,13 @@ fun ServerDetailScreen(id: String, nav: NavController) {
                         }
                     }
                     SectionCard {
-                        Muted("Обфускация: Jc=${awg.obfs.jc} Jmin=${awg.obfs.jmin} Jmax=${awg.obfs.jmax} S1=${awg.obfs.s1} S2=${awg.obfs.s2}")
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(awg.obfs.versionLabel, fontWeight = FontWeight.SemiBold, color = if (awg.obfs.isV3) Pal.accent2 else Pal.danger)
+                        Muted(
+                            if (awg.obfs.isV3) "Заголовки зашифрованы, паддинг S1–S4 ${awg.obfs.s1}/${awg.obfs.s2}/${awg.obfs.s3}/${awg.obfs.s4}, Jc=${awg.obfs.jc}, первый пакет похож на ответ DNS"
+                            else "Старый профиль: Jc=${awg.obfs.jc} S1=${awg.obfs.s1} S2=${awg.obfs.s2}. Его проще распознать — переведите сервер на 3.1."
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (!awg.obfs.isV3) Button(enabled = busy == null, onClick = { upgrade = true }) { Text("Перейти на 3.1") }
                             OutlinedButton(enabled = busy == null, onClick = { act("Переустановка AmneziaWG…") { app.local.deployAwg(s.id, awg.port, awg.obfs, null) { log += it } } }) { Text("Применить заново") }
                             TextButton(onClick = { removeRole = true }) { Text("Удалить AWG", color = Pal.danger) }
                         }
@@ -181,6 +187,14 @@ fun ServerDetailScreen(id: String, nav: NavController) {
             act("Удаление клиента…") { app.local.removePeer(s.id, p.id) { log += it } }
         }) { delPeer = null }
     }
+    if (upgrade) ConfirmDialog(
+        "Перейти на AmneziaWG 3.1?",
+        "На сервере обновится AmneziaWG и сменятся параметры обфускации. Туннели в этом приложении обновятся сами — переподключитесь. " +
+            "Конфиги и QR, которые вы отправляли на другие устройства, перестанут работать: выдайте их заново. " +
+            "На других устройствах нужен клиент с поддержкой 3.1: AmneziaVPN 5.0.1.5+ или AmneziaWG 3.1.4+.",
+        "Перейти",
+        onConfirm = { act("Переход на AmneziaWG 3.1…") { app.local.upgradeAwgTo31(s.id) { log += it }; ctx.toast("Сервер переведён на AmneziaWG 3.1") } },
+    ) { upgrade = false }
     if (removeRole) ConfirmDialog(
         if (s.role == ServerRole.RELAY) "Снять пересылку?" else "Удалить AmneziaWG?",
         if (s.role == ServerRole.RELAY) "Правила nftables ретранслятора будут удалены." else "Интерфейс будет остановлен и удалён, все клиенты перестанут работать.",

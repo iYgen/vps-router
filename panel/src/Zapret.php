@@ -141,7 +141,7 @@ class Zapret
      */
     private static function probeTargets(array $targets, int $attempts = 2, float $timeout = 4.0): array
     {
-        $sni = (string) (Setting::get('reality_server_name') ?: 'www.microsoft.com');
+        $sni = (string) (Setting::get('reality_server_name') ?: 'addons.mozilla.org');
         $res = [];
         foreach ($targets as $ip) {
             $ok = false;
