@@ -203,6 +203,54 @@ class DeviceInboundsTest extends TestCase
         }
     }
 
+    public function testXhttpProfilesKeepOldLinksAndServerUntouched(): void
+    {
+        DeviceInbounds::saveSettings(self::ALL_ON + ['xhttp' => ['enabled' => true, 'port' => 443]]);
+        try {
+            // Существующая установка: профиль не выбран, домен задан — всё как до 1.6.0.
+            Setting::set('inbound_xhttp_profile', '');
+            Setting::set('inbound_xhttp_host', 'site.example.com');
+            Setting::set('inbound_xhttp_path', '/abcdef12');
+            Setting::set('inbound_xhttp_xmux', '1');
+            Setting::set('inbound_xhttp_xmux_concurrency', '16-32');
+            $this->assertSame('classic', DeviceInbounds::xhttpProfile());
+            $client = Client::find(Client::create('P-' . uniqid())['id']);
+            $old = DeviceInbounds::clientConfigs($client)['xhttp'];
+            $this->assertStringContainsString('mode=auto', $old['uri']);
+            $this->assertSame('16-32', $old['outbound']['streamSettings']['xhttpSettings']['extra']['xmux']['maxConcurrency']);
+            $serverBefore = \App\Singbox\XrayXhttpBuilder::build(Client::active());
+
+            // Новая установка (домена нет) — «как браузер» по умолчанию.
+            Setting::set('inbound_xhttp_host', '');
+            $this->assertSame('browser', DeviceInbounds::xhttpProfile());
+
+            DeviceInbounds::saveXhttpSettings(['host' => 'site.example.com', 'path' => '/abcdef12', 'profile' => 'browser']);
+            $new = DeviceInbounds::clientConfigs($client)['xhttp'];
+            $this->assertStringContainsString('mode=stream-up', $new['uri']);
+            $xs = $new['outbound']['streamSettings']['xhttpSettings'];
+            $this->assertSame('stream-up', $xs['mode']);
+            $this->assertSame('2-4', $xs['extra']['xmux']['maxConcurrency']);
+            $this->assertSame('100-1000', $xs['extra']['xPaddingBytes']); // в пределах проверки сервера
+
+            // Серверная сторона от профиля не зависит — старые ссылки принимаются как раньше.
+            $this->assertSame($serverBefore['inbounds'][0]['streamSettings'], \App\Singbox\XrayXhttpBuilder::build(Client::active())['inbounds'][0]['streamSettings']);
+
+            if ($dir = getenv('DUMP_OUTBOUNDS')) {
+                file_put_contents("$dir/xhttp-classic.json", json_encode(['outbounds' => [$old['outbound']]], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+                file_put_contents("$dir/xhttp-browser.json", json_encode(['outbounds' => [$new['outbound']]], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+                file_put_contents("$dir/xhttp-server2.json", json_encode(\App\Singbox\XrayXhttpBuilder::build(Client::active()), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+            }
+
+            $this->expectException(\InvalidArgumentException::class);
+            DeviceInbounds::saveXhttpSettings(['host' => 'site.example.com', 'profile' => 'turbo']);
+        } finally {
+            Setting::set('inbound_xhttp_host', '');
+            Setting::set('inbound_xhttp_path', '');
+            Setting::set('inbound_xhttp_profile', '');
+            Setting::set('inbound_xhttp_vlessenc', '');
+        }
+    }
+
     public function testVlessCanBeDisabledWithoutRealityBlockingBuild(): void
     {
         $values = self::ALL_ON;

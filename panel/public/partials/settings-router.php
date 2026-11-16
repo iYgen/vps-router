@@ -110,6 +110,12 @@ use App\RiskScanner;
               <label style="display:flex;align-items:center;gap:6px" title="<?= htmlspecialchars(t('settings.xhttp.vlessenc_hint')) ?>">
                 <input type="checkbox" name="xhttp[vlessenc]" value="1" <?= DeviceInbounds::vlessEncEnabled() ? 'checked' : '' ?>>
                 <?= htmlspecialchars(t('settings.xhttp.vlessenc')) ?></label>
+              <label title="<?= htmlspecialchars(t('settings.xhttp.profile_hint')) ?>"><?= htmlspecialchars(t('settings.xhttp.profile')) ?><br>
+                <select name="xhttp[profile]">
+                  <?php foreach (DeviceInbounds::XHTTP_PROFILES as $p): ?>
+                  <option value="<?= $p ?>" <?= DeviceInbounds::xhttpProfile() === $p ? 'selected' : '' ?>><?= htmlspecialchars(t('settings.xhttp.profile_' . $p)) ?></option>
+                  <?php endforeach; ?>
+                </select></label>
               <label><?= htmlspecialchars(t('settings.xhttp.concurrency')) ?><br>
                 <input type="text" name="xhttp[xmux_concurrency]" value="<?= htmlspecialchars(DeviceInbounds::xmuxConcurrency()) ?>" style="width:80px"></label>
             </div>

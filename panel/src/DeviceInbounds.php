@@ -265,6 +265,22 @@ class DeviceInbounds
      */
     public static function xhttpExtra(): ?array
     {
+        if (self::xhttpProfile() === 'browser') {
+            // Замерено на стенде (браузер против туннеля, «глазами ТСПУ»): соединения живут
+            // недолго и несут по 2–4 потока — нагрузка разнесена, как у браузера, а не
+            // сосредоточена в 2–3 многочасовых соединениях.
+            return [
+                'xmux' => [
+                    'maxConcurrency' => '2-4',
+                    'maxConnections' => 0,
+                    'cMaxReuseTimes' => '4-12',
+                    'hMaxRequestTimes' => '30-80',
+                    'hMaxReusableSecs' => '8-25',
+                    'hKeepAlivePeriod' => 0,
+                ],
+                'xPaddingBytes' => '100-1000', // в пределах проверки сервера (по умолчанию 100-1000)
+            ];
+        }
         if (!self::xmuxEnabled()) {
             return null;
         }
@@ -316,9 +332,33 @@ class DeviceInbounds
         return rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
     }
 
+    public const XHTTP_PROFILES = ['classic', 'browser'];
+
+    /**
+     * Профиль поведения клиента XHTTP. Меняет только то, как клиент ходит к серверу,
+     * в пределах того, что сервер принимает и так, — уже выданные ссылки работают при
+     * любом профиле. 'classic' — как до 1.6.0; 'browser' — stream-up (отдача одним
+     * потоком, без POST на каждый кусок) и частая смена соединений.
+     * Без явной настройки: новые установки — 'browser', существующие — 'classic'.
+     */
+    public static function xhttpProfile(): string
+    {
+        $v = (string) self::cfg('inbound_xhttp_profile', '');
+        if (in_array($v, self::XHTTP_PROFILES, true)) {
+            return $v;
+        }
+        return self::xhttpHost() === null ? 'browser' : 'classic';
+    }
+
+    public static function xhttpMode(): string
+    {
+        return self::xhttpProfile() === 'browser' ? 'stream-up' : 'auto';
+    }
+
     /** Сохранить настройки XHTTP из формы. Бросает InvalidArgumentException. */
     public static function saveXhttpSettings(array $in): void
     {
+        $curProfile = self::xhttpProfile(); // до сохранения домена: от него зависит значение по умолчанию
         $host = strtolower(trim((string) ($in['host'] ?? '')));
         if ($host !== '' && !self::validHost($host)) {
             throw new \InvalidArgumentException('XHTTP: некорректный домен сайта');
@@ -338,6 +378,11 @@ class DeviceInbounds
         self::cfgset('inbound_xhttp_xmux', !empty($in['xmux']) ? '1' : '0');
         self::cfgset('inbound_xhttp_xmux_concurrency', $conc);
         self::cfgset('inbound_xhttp_vlessenc', !empty($in['vlessenc']) ? '1' : '0');
+        $profile = (string) ($in['profile'] ?? $curProfile);
+        if (!in_array($profile, self::XHTTP_PROFILES, true)) {
+            throw new \InvalidArgumentException('XHTTP: неизвестный профиль');
+        }
+        self::cfgset('inbound_xhttp_profile', $profile);
         self::ensureSecrets();
     }
 
@@ -680,7 +725,7 @@ class DeviceInbounds
                         'type' => 'xhttp',
                         'host' => $xh,
                         'path' => self::xhttpPath(),
-                        'mode' => 'auto',
+                        'mode' => self::xhttpMode(),
                     ];
                     if ($extra = self::xhttpExtra()) {
                         $q['extra'] = json_encode($extra, JSON_UNESCAPED_SLASHES);
@@ -690,7 +735,7 @@ class DeviceInbounds
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-xhttp.txt");
                     // Для Android-приложения: outbound ядра Xray (sing-box XHTTP не умеет).
                     // Признак Xray-формата — ключ "protocol" (у sing-box — "type").
-                    $xs = ['host' => $xh, 'path' => self::xhttpPath(), 'mode' => 'auto'];
+                    $xs = ['host' => $xh, 'path' => self::xhttpPath(), 'mode' => self::xhttpMode()];
                     if ($extra) {
                         $xs['extra'] = $extra;
                     }

@@ -193,13 +193,16 @@ log_format vpsr_xhttp '\$time_iso8601 \$remote_addr \$request_method \$status rt
         SNIP="# managed by vps-router apply-router.sh — do not edit
 location ^~ $XH_PATH {
     client_max_body_size 0;
-    client_body_timeout 5m;
+    # 1h: в режиме stream-up отдача идёт одним долгим POST, он может молчать минутами (мессенджеры).
+    client_body_timeout 1h;
     grpc_pass grpc://127.0.0.1:$XH_PORT;
     grpc_set_header Host \$host;
     grpc_set_header X-Real-IP \$remote_addr;
     grpc_read_timeout 1h;
     grpc_send_timeout 1h;
     grpc_socket_keepalive on;
+    # Ответ Xray — полными TLS-записями по 16 КБ, как у обычного сайта/CDN (по умолчанию рвётся на 4–8 КБ).
+    grpc_buffer_size 64k;
     access_log /var/log/nginx/vpsrouter-xhttp.log vpsr_xhttp;
 }"
     else

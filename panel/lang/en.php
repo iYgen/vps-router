@@ -238,6 +238,10 @@ return [
     'settings.xhttp.concurrency' => 'streams per connection',
     'settings.xhttp.vlessenc' => 'VLESS Encryption (post-quantum)',
     'settings.xhttp.vlessenc_hint' => 'ML-KEM-768 + X25519 encryption inside XHTTP: the stream stays unreadable even if a middlebox strips TLS. Clients need Xray 25.9+ (v2rayNG, v2rayTun, Happ, the VPS Router app). Re-share links after enabling.',
+    'settings.xhttp.profile' => 'Client behaviour',
+    'settings.xhttp.profile_classic' => 'Classic',
+    'settings.xhttp.profile_browser' => 'Browser-like',
+    'settings.xhttp.profile_hint' => 'Browser-like: uploads as a single stream and connections rotate often — measured to look less like a tunnel. Links already shared keep working either way; new links and the VPS Router app get the new profile. xmux settings below apply to Classic only.',
     'settings.xhttp.note' => 'xmux: the client keeps a few long-lived HTTP/2 connections and multiplexes streams over them — fewer new TLS handshakes, more resilient to drops. Add to the site\'s 443 server{}: include snippets/vpsrouter-xhttp.conf;',
 
     'settings.adblock.title' => 'Ad blocking',

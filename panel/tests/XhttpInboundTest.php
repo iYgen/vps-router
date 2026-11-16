@@ -24,11 +24,12 @@ class XhttpInboundTest extends TestCase
     {
         Setting::set('inbound_xhttp_enabled', '0');
         Setting::set('inbound_xhttp_host', '');
+        Setting::set('inbound_xhttp_profile', '');
     }
 
     private function enable(bool $xmux = true): array
     {
-        DeviceInbounds::saveXhttpSettings(['host' => 'Site.Example.com', 'path' => '', 'xmux' => $xmux ? '1' : '', 'xmux_concurrency' => '16-32']);
+        DeviceInbounds::saveXhttpSettings(['host' => 'Site.Example.com', 'path' => '', 'xmux' => $xmux ? '1' : '', 'xmux_concurrency' => '16-32', 'profile' => 'classic']);
         DeviceInbounds::enableProtocol('xhttp');
         $c = Client::create('Xh-' . uniqid());
         return Client::find($c['id']);
@@ -38,6 +39,7 @@ class XhttpInboundTest extends TestCase
     {
         Setting::set('inbound_xhttp_enabled', '1');
         Setting::set('inbound_xhttp_host', '');
+        Setting::set('inbound_xhttp_profile', '');
         $this->assertFalse(DeviceInbounds::xhttpReady());
         $this->assertSame('', DeviceInbounds::xhttpEnv());
         $this->assertNull(XrayXhttpBuilder::build([['id' => 1, 'uuid' => 'u']]));

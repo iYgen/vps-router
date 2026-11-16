@@ -1,0 +1,16 @@
+--- a/http2/flow.go
++++ b/http2/flow.go
+@@ -8,7 +8,12 @@
+ 
+ // inflowMinRefresh is the minimum number of bytes we'll send for a
+ // flow control window update.
+-const inflowMinRefresh = 4 << 10
++//
++// vpsrouter: 1 МБ вместо 4 КБ. Клиент Go слал WINDOW_UPDATE после каждых 4 КБ
++// скачанного — снаружи TLS это непрерывный поток одинаковых 43-байтных записей
++// вверх, заметная примета туннеля (у Chrome — раз в несколько мегабайт).
++// Окно потока 4 МБ, так что 1 МБ не тормозит передачу.
++const inflowMinRefresh = 1 << 20
+ 
+ // inflow accounts for an inbound flow control window.
+ // It tracks both the latest window sent to the peer (used for enforcement)
