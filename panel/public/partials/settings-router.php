@@ -104,6 +104,8 @@ use App\RiskScanner;
                 <input type="text" name="xhttp[host]" value="<?= htmlspecialchars((string) DeviceInbounds::xhttpHost()) ?>" placeholder="example.com" style="width:180px"></label>
               <label><?= htmlspecialchars(t('settings.xhttp.path')) ?><br>
                 <input type="text" name="xhttp[path]" value="<?= htmlspecialchars(DeviceInbounds::xhttpPath()) ?>" placeholder="<?= htmlspecialchars(t('settings.xhttp.path_auto')) ?>" style="width:180px"></label>
+              <label title="<?= htmlspecialchars(t('settings.xhttp.front_hint')) ?>"><?= htmlspecialchars(t('settings.xhttp.front')) ?><br>
+                <input type="text" name="xhttp[front]" value="<?= htmlspecialchars((string) DeviceInbounds::frontHost()) ?>" placeholder="cdn.example.com" style="width:180px"></label>
               <label style="display:flex;align-items:center;gap:6px">
                 <input type="checkbox" name="xhttp[xmux]" value="1" <?= DeviceInbounds::xmuxEnabled() ? 'checked' : '' ?>>
                 xmux</label>

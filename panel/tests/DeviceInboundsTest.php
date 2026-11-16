@@ -251,6 +251,45 @@ class DeviceInboundsTest extends TestCase
         }
     }
 
+    public function testXhttpFrontVariantIsFallbackEntry(): void
+    {
+        DeviceInbounds::saveSettings(self::ALL_ON + ['xhttp' => ['enabled' => true, 'port' => 443]]);
+        try {
+            Setting::set('inbound_xhttp_host', 'site.example.com');
+            Setting::set('inbound_xhttp_path', '/abcdef12');
+            Setting::set('inbound_xhttp_profile', 'classic');
+            $client = Client::find(Client::create('F-' . uniqid())['id']);
+
+            // Без фронт-домена варианта «через фронт» нет.
+            Setting::set('inbound_xhttp_front', '');
+            $this->assertArrayNotHasKey('xhttp@front', DeviceInbounds::allConfigs($client));
+
+            DeviceInbounds::saveXhttpSettings(['host' => 'site.example.com', 'path' => '/abcdef12', 'front' => 'cdn.example.com', 'profile' => 'classic']);
+            $all = DeviceInbounds::allConfigs($client);
+            $this->assertArrayHasKey('xhttp', $all);        // прямой остался
+            $this->assertArrayHasKey('xhttp@front', $all);  // появился запасной
+
+            // Прямой — на origin, auto; фронт — на CDN-домен, packet-up.
+            $direct = $all['xhttp']['outbound']['streamSettings'];
+            $front = $all['xhttp@front']['outbound']['streamSettings'];
+            $this->assertSame('site.example.com', $direct['tlsSettings']['serverName']);
+            $this->assertSame('cdn.example.com', $front['tlsSettings']['serverName']);
+            $this->assertSame('cdn.example.com', $all['xhttp@front']['outbound']['settings']['vnext'][0]['address']);
+            $this->assertSame('packet-up', $front['xhttpSettings']['mode']);
+            $this->assertStringContainsString('host=cdn.example.com', $all['xhttp@front']['uri']);
+            $this->assertStringContainsString('mode=packet-up', $all['xhttp@front']['uri']);
+            // Путь и UUID — те же, сервер один (старые прямые ссылки продолжают работать).
+            $this->assertSame($all['xhttp']['outbound']['streamSettings']['xhttpSettings']['path'], $front['xhttpSettings']['path']);
+
+            $this->assertSame(['xhttp', 'front'], DeviceInbounds::parseConfigKey('xhttp@front'));
+        } finally {
+            Setting::set('inbound_xhttp_host', '');
+            Setting::set('inbound_xhttp_path', '');
+            Setting::set('inbound_xhttp_front', '');
+            Setting::set('inbound_xhttp_profile', '');
+        }
+    }
+
     public function testVlessCanBeDisabledWithoutRealityBlockingBuild(): void
     {
         $values = self::ALL_ON;

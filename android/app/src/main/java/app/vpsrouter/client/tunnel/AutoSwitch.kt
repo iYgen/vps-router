@@ -40,9 +40,13 @@ object AutoSwitch {
 
     private fun panelFormat(t: TunnelProfile) = if (t.source == "panel") t.origin?.split(':')?.getOrNull(2)?.substringBefore('@') else null
 
-    /** Ключ сортировки: (слабый протокол, через ретранслятор, ранг протокола). */
+    /** Соединение через фронт (CDN): платный запасной вход, пробуем последним. */
+    fun isFront(t: TunnelProfile): Boolean = t.origin?.substringAfterLast(':')?.endsWith("@front") == true
+
+    /** Ключ сортировки: (фронт — в самый конец; слабый протокол; через ретранслятор; ранг протокола). */
     fun level(t: TunnelProfile): Triple<Int, Int, Int> {
         val r = protoRank(protoOf(t, panelFormat(t)))
+        if (isFront(t)) return Triple(9, 9, r)
         return Triple(if (r <= 2) 0 else 1, if (t.via != null) 1 else 0, r)
     }
 

@@ -231,7 +231,7 @@ class PanelSession(private val repo: Repository) {
         else app.vpsrouter.client.tunnel.TunnelManager.parseConfig(conf) // валидация
         val origin = "panel:$deviceId:$format"
         val existing = repo.data.value.tunnels.firstOrNull { it.origin == origin }
-        val via = if (format.contains('@')) relayName(format.substringAfter('@')) else null
+        val via = when { format.endsWith("@front") -> "фронт"; format.contains('@') -> relayName(format.substringAfter('@')); else -> null }
         val name = deviceName + if (via != null) " ⇢ $via" else ""
         val t = (existing ?: TunnelProfile(name = name, config = conf, kind = if (box) "singbox" else "awg", source = "panel", origin = origin, via = via)).copy(config = conf, via = via, kind = if (box) "singbox" else "awg")
         repo.upsertTunnel(t)

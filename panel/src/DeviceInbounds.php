@@ -221,6 +221,16 @@ class DeviceInbounds
         return self::validHost($h) ? $h : null;
     }
 
+    /** Домен фронта (CDN/анти-DDoS/свой РФ-VPS) перед origin — запасной вход. Пусто, если не задан. */
+    public static function frontHost(): ?string
+    {
+        $h = strtolower(trim((string) self::cfg('inbound_xhttp_front', '')));
+        return self::validHost($h) ? $h : null;
+    }
+
+    /** Внутр. флаг: собрать XHTTP-вариант через фронт (адрес/SNI = фронт, режим packet-up). */
+    private static bool $frontBuild = false;
+
     public static function validHost(string $h): bool
     {
         return (bool) preg_match('/^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $h);
@@ -363,6 +373,11 @@ class DeviceInbounds
         if ($host !== '' && !self::validHost($host)) {
             throw new \InvalidArgumentException('XHTTP: некорректный домен сайта');
         }
+        $front = strtolower(trim((string) ($in['front'] ?? '')));
+        if ($front !== '' && !self::validHost($front)) {
+            throw new \InvalidArgumentException('XHTTP: некорректный домен фронта');
+        }
+        self::cfgset('inbound_xhttp_front', $front);
         $path = trim((string) ($in['path'] ?? ''));
         if ($path !== '' && !self::validPath($path)) {
             throw new \InvalidArgumentException('XHTTP: путь — «/» и 6–64 символа [A-Za-z0-9_-]');
@@ -715,7 +730,13 @@ class DeviceInbounds
                     if (!self::xhttpReady()) {
                         break;
                     }
-                    $xh = self::xhttpHost();
+                    // Через фронт: подключаемся к CDN-домену, режим packet-up (кэш-CDN буферизует тело — stream-up не выживает).
+                    $front = self::$frontBuild;
+                    if ($front && self::frontHost() === null) {
+                        break;
+                    }
+                    $xh = $front ? self::frontHost() : self::xhttpHost();
+                    $xmode = $front ? 'packet-up' : self::xhttpMode();
                     $q = [
                         'encryption' => self::vlessEncryption(),
                         'security' => 'tls',
@@ -725,7 +746,7 @@ class DeviceInbounds
                         'type' => 'xhttp',
                         'host' => $xh,
                         'path' => self::xhttpPath(),
-                        'mode' => self::xhttpMode(),
+                        'mode' => $xmode,
                     ];
                     if ($extra = self::xhttpExtra()) {
                         $q['extra'] = json_encode($extra, JSON_UNESCAPED_SLASHES);
@@ -735,7 +756,7 @@ class DeviceInbounds
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-xhttp.txt");
                     // Для Android-приложения: outbound ядра Xray (sing-box XHTTP не умеет).
                     // Признак Xray-формата — ключ "protocol" (у sing-box — "type").
-                    $xs = ['host' => $xh, 'path' => self::xhttpPath(), 'mode' => self::xhttpMode()];
+                    $xs = ['host' => $xh, 'path' => self::xhttpPath(), 'mode' => $xmode];
                     if ($extra) {
                         $xs['extra'] = $extra;
                     }
@@ -851,6 +872,19 @@ class DeviceInbounds
     public static function allConfigs(array $client): array
     {
         $out = self::clientConfigs($client);
+        // Запасной вход через фронт (CDN): отдельный тип соединения, автовыбор ставит его после прямого.
+        if (self::frontHost() !== null && isset($out['xhttp'])) {
+            self::$frontBuild = true;
+            try {
+                $fc = self::clientConfigs($client);
+            } finally {
+                self::$frontBuild = false;
+            }
+            if (isset($fc['xhttp'])) {
+                $fc['xhttp']['label'] .= ' · через фронт';
+                $out['xhttp@front'] = $fc['xhttp'];
+            }
+        }
         foreach (Relay::activeVia(self::$ctxRouter) as $via) {
             foreach (self::clientConfigs($client, $via) as $proto => $entry) {
                 $entry['label'] .= ' · ' . $via['name'];
@@ -871,10 +905,10 @@ class DeviceInbounds
     /** "<протокол>[@<relay>]" → [протокол, id связи|null]; null, если формат чужой. */
     public static function parseConfigKey(string $key): ?array
     {
-        if (!preg_match('/^([a-z0-9]+)(?:@([0-9]{1,9}))?$/', $key, $m) || !isset(self::PROTOCOLS[$m[1]])) {
+        if (!preg_match('/^([a-z0-9]+)(?:@([0-9]{1,9}|front))?$/', $key, $m) || !isset(self::PROTOCOLS[$m[1]])) {
             return null;
         }
-        return [$m[1], isset($m[2]) ? (int) $m[2] : null];
+        return [$m[1], ($m[2] ?? null) === 'front' ? 'front' : (isset($m[2]) ? (int) $m[2] : null)];
     }
 
     public static function tunnelAddress(string $protocol, int $clientId): string

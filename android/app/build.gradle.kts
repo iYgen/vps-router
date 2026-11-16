@@ -18,8 +18,8 @@ android {
         targetSdk = 35
         // Версия приложения. При каждом выпуске увеличивайте versionCode — по нему
         // приложение и панель понимают, что есть обновление.
-        versionCode = 16
-        versionName = "0.10.1"
+        versionCode = 17
+        versionName = "0.10.2"
         // Откуда приложение само скачивает обновления (без панели): каталог panel/app/ в репозитории.
         // Версии ядер в libs/libbox.aar (см. core/README.md) — для экрана «О приложении», без загрузки ядра.
         buildConfigField("String", "CORE_VERSIONS", "\"sing-box 1.14.4 / Xray 26.3.27\"")

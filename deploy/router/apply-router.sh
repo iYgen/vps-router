@@ -203,6 +203,8 @@ location ^~ $XH_PATH {
     grpc_socket_keepalive on;
     # Ответ Xray — полными TLS-записями по 16 КБ, как у обычного сайта/CDN (по умолчанию рвётся на 4–8 КБ).
     grpc_buffer_size 64k;
+    # Если перед сервером стоит фронт-CDN — не давать ему кэшировать динамический путь XHTTP.
+    add_header Cache-Control \"no-store\" always;
     access_log /var/log/nginx/vpsrouter-xhttp.log vpsr_xhttp;
 }"
     else

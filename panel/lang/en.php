@@ -242,6 +242,8 @@ return [
     'settings.xhttp.profile_classic' => 'Classic',
     'settings.xhttp.profile_browser' => 'Browser-like',
     'settings.xhttp.profile_hint' => 'Browser-like: uploads as a single stream and connections rotate often — measured to look less like a tunnel. Links already shared keep working either way; new links and the VPS Router app get the new profile. xmux settings below apply to Classic only.',
+    'settings.xhttp.front' => 'Front domain (fallback entry)',
+    'settings.xhttp.front_hint' => 'Domain of a CDN / anti-DDoS / your own RF server in front of the origin. The app switches to it only when the direct connection is blocked. A paid CDN bills traffic — keep it as emergency only. Strongly enable VLESS Encryption, otherwise the front sees the VLESS layer.',
     'settings.xhttp.note' => 'xmux: the client keeps a few long-lived HTTP/2 connections and multiplexes streams over them — fewer new TLS handshakes, more resilient to drops. Add to the site\'s 443 server{}: include snippets/vpsrouter-xhttp.conf;',
 
     'settings.adblock.title' => 'Ad blocking',

@@ -38,6 +38,20 @@ class AutoSwitchTest {
         assertNull(AutoSwitch.next(listOf(reality, awg), reality, mapOf(awg.id to now), now))
     }
 
+    private val xhttpFront = TunnelProfile(id = "front", name = "Phone", config = "", kind = "singbox",
+        source = "panel", origin = "panel:7:xhttp@front", via = "фронт")
+
+    @Test fun frontIsAlwaysTheLastResort() {
+        assertEquals(true, AutoSwitch.isFront(xhttpFront))
+        val items = listOf(xhttpFront, ss, reality, xhttp, awg)
+        // С любого типа фронт идёт после всех прочих.
+        val now = 2_000_000L
+        val failed = mutableMapOf(reality.id to now, awg.id to now, xhttp.id to now, ss.id to now)
+        assertEquals(xhttpFront, AutoSwitch.next(items, ss, failed, now))
+        // Фронт не предлагается, пока есть неиспробованный прямой вариант.
+        assertEquals(false, AutoSwitch.isFront(AutoSwitch.next(items, reality, mapOf(reality.id to now), now)!!))
+    }
+
     @Test fun startsFromAnyLevelAndWrapsAround() {
         // Пользователь выбрал Shadowsocks (последний уровень) — следующий берётся с начала лестницы.
         assertEquals(reality, AutoSwitch.next(all, ss, mapOf(ss.id to 0L), 1L))

@@ -473,7 +473,7 @@ class PanelClient(private val profile: PanelProfile) {
                 "xhttp" -> "VLESS+XHTTP"; "shadowsocks" -> "Shadowsocks"; "trojan" -> "Trojan"
                 "hysteria2" -> "Hysteria2"; else -> proto
             }
-            return if (via != null) "$name ⇢ ретранслятор #$via" else name
+            return when (via) { null -> name; "front" -> "$name ⇢ фронт"; else -> "$name ⇢ ретранслятор #$via" }
         }
 
         fun isTunnelFormat(f: String) = f.startsWith("amneziawg") || f.startsWith("wireguard")
