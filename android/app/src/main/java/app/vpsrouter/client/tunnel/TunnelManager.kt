@@ -100,8 +100,8 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
      * @param autoNote не null — переключение сделал автовыбор (а не пользователь): список
      *   «не работавших» типов сохраняется и пояснение показывается на главной.
      */
-    suspend fun start(profile: TunnelProfile, autoNote: String? = null) = withContext(Dispatchers.IO) {
-        mutex.withLock {
+    suspend fun start(profile: TunnelProfile, autoNote: String? = null): Unit = withContext(Dispatchers.IO) {
+        mutex.withLock<Unit> {
             healthJob?.cancel()
             if (autoNote == null) failedAt.clear()
             _status.value = _status.value.copy(busy = true, error = null)
@@ -129,6 +129,15 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                     bridgeNow = bridge
                 } else {
                     val cfg = parseConfig(ConfigTransform.apply(profile.config, settings))
+                    if (current?.box == true) {
+                        // Переход sing-box → AmneziaWG (часто из автовыбора, когда приложение в фоне).
+                        // Службу AmneziaWG запускаем, пока ещё работает служба sing-box: без активной
+                        // VPN-службы фоновое приложение запускать службы не может (Android 8+, на Honor/
+                        // Huawei — «Cannot bind …GoBackend$VpnService»), и VPN выключался совсем.
+                        backend.version // загрузить ядро AmneziaWG
+                        runCatching { context.startService(android.content.Intent(context, GoBackend.VpnService::class.java)) }
+                            .onFailure { AppLog.e("Служба AmneziaWG не запустилась заранее: ${it.message}") }
+                    }
                     current?.let {
                         if (it.box) BoxVpnService.instance?.let { s -> s.onStopped = null; s.stopBox() }
                         else if (it.profileId != profile.id) backend.setState(it, Tunnel.State.DOWN, null)
@@ -151,6 +160,19 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                 _status.value = _status.value.copy(busy = false, error = describe(e))
                 if (_status.value.state != Tunnel.State.UP) SpeedNotifier.down(context, describe(e))
                 AppLog.e("Не удалось подключить «${profile.name}»: ${describe(e)}")
+                // Автовыбор не должен оставлять человека без VPN: этот тип не запустился —
+                // пробуем следующий по лестнице.
+                if (autoNote != null) {
+                    val now = System.currentTimeMillis()
+                    failedAt[profile.id] = now
+                    val group = app.vpsrouter.client.ui.connectionGroups(repo.data.value).firstOrNull { g -> g.items.any { it.id == profile.id } }
+                    val next = group?.let { AutoSwitch.next(it.items, profile, failedAt, now) }
+                    if (next != null) {
+                        val note = "«${AutoSwitch.label(profile)}» не запустился → «${AutoSwitch.label(next)}»"
+                        AppLog.i("Автовыбор: $note")
+                        scope.launch { start(next, autoNote = note) }
+                    }
+                }
             }
         }
     }
