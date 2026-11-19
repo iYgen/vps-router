@@ -44,19 +44,36 @@ class XrayXhttpBuilder
             $rules[] = ['type' => 'field', 'user' => [$name], 'outboundTag' => 'to-' . $name];
         }
 
-        return [
-            'log' => ['loglevel' => 'warning'],
-            'inbounds' => [[
-                'tag' => 'xhttp-in',
+        $inbounds = [[
+            'tag' => 'xhttp-in',
+            'listen' => '127.0.0.1',
+            'port' => DeviceInbounds::XHTTP_LOCAL_PORT,
+            'protocol' => 'vless',
+            'settings' => ['clients' => $xrayClients, 'decryption' => DeviceInbounds::vlessDecryption()],
+            'streamSettings' => [
+                'network' => 'xhttp',
+                'xhttpSettings' => ['path' => DeviceInbounds::xhttpPath(), 'mode' => 'auto'],
+            ],
+        ]];
+        // Вход через фронт (CDN): свой путь и порт, VLESS Encryption всегда — CDN снимает TLS.
+        // Те же клиенты (email cN) — маршрутизация через тот же SOCKS-мост.
+        if (DeviceInbounds::frontReady()) {
+            $inbounds[] = [
+                'tag' => 'xhttp-front',
                 'listen' => '127.0.0.1',
-                'port' => DeviceInbounds::XHTTP_LOCAL_PORT,
+                'port' => DeviceInbounds::XHTTP_FRONT_LOCAL_PORT,
                 'protocol' => 'vless',
-                'settings' => ['clients' => $xrayClients, 'decryption' => DeviceInbounds::vlessDecryption()],
+                'settings' => ['clients' => $xrayClients, 'decryption' => DeviceInbounds::frontDecryption()],
                 'streamSettings' => [
                     'network' => 'xhttp',
-                    'xhttpSettings' => ['path' => DeviceInbounds::xhttpPath(), 'mode' => 'auto'],
+                    'xhttpSettings' => ['path' => DeviceInbounds::frontPath(), 'mode' => 'auto'],
                 ],
-            ]],
+            ];
+        }
+
+        return [
+            'log' => ['loglevel' => 'warning'],
+            'inbounds' => $inbounds,
             'outbounds' => $outbounds,
             'routing' => ['domainStrategy' => 'AsIs', 'rules' => $rules],
         ];

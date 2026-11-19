@@ -171,6 +171,8 @@ data class AppSettings(
     val autoConnect: Boolean = false,
     /** Автовыбор протокола: если тип соединения заблокирован, перейти на следующий тип того же сервера. */
     val autoSwitch: Boolean = true,
+    /** Автовыбор может перейти на вход через CDN (фронт): платный трафик, поэтому по умолчанию выключено. */
+    val cdnFront: Boolean = false,
     val routeMode: RouteMode = RouteMode.ALL,
     /** Пакеты приложений для EXCLUDE_APPS / ONLY_APPS. */
     val apps: List<String> = emptyList(),

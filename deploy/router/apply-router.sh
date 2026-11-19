@@ -157,14 +157,21 @@ XHTTP_ENV="$(dirname "$SINGBOX_CONFIG")/xhttp.env"
 XRAY_DIR=/etc/xray-xhttp
 XHTTP_SNIPPET=/etc/nginx/snippets/vpsrouter-xhttp.conf
 if command -v xray >/dev/null 2>&1 && id xray-xhttp >/dev/null 2>&1 && [ -d "$XRAY_DIR" ]; then
-    XH_PATH="" XH_PORT=""
+    XH_PATH="" XH_PORT="" XF_PATH="" XF_PORT=""
     if [ -s "$XHTTP_ENV" ]; then
         XH_PATH=$(sed -n 's/^PATH_PREFIX=//p' "$XHTTP_ENV")
         XH_PORT=$(sed -n 's/^LOCAL_PORT=//p' "$XHTTP_ENV")
+        XF_PATH=$(sed -n 's/^FRONT_PATH=//p' "$XHTTP_ENV")
+        XF_PORT=$(sed -n 's/^FRONT_PORT=//p' "$XHTTP_ENV")
         # Файл пишет веб-пользователь — принимаем только строго ожидаемый формат.
         if ! [[ "$XH_PATH" =~ ^/[A-Za-z0-9_-]{6,64}$ && "$XH_PORT" =~ ^[0-9]{2,5}$ ]]; then
             log "WARN: $XHTTP_ENV в неожиданном формате — XHTTP выключаю"
             XH_PATH=""
+        fi
+        # Вход через фронт (CDN) — необязательный второй location.
+        if [ -n "$XF_PATH" ] && ! [[ "$XF_PATH" =~ ^/[A-Za-z0-9_-]{6,64}$ && "$XF_PORT" =~ ^[0-9]{2,5}$ ]]; then
+            log "WARN: FRONT_PATH/FRONT_PORT в неожиданном формате — вход через фронт выключаю"
+            XF_PATH=""
         fi
     fi
     # Формат лога XHTTP-пути: кто, сколько длился запрос, сколько байт, статус апстрима и
@@ -207,6 +214,22 @@ location ^~ $XH_PATH {
     add_header Cache-Control \"no-store\" always;
     access_log /var/log/nginx/vpsrouter-xhttp.log vpsr_xhttp;
 }"
+        if [ -n "$XF_PATH" ]; then
+            # Вход через фронт (CDN): отдельный Xray-inbound с VLESS Encryption. CDN пропускает
+            # только GET — тела запросов нет, данные идут в заголовках (см. DeviceInbounds::frontExtra).
+            SNIP="$SNIP
+location ^~ $XF_PATH {
+    grpc_pass grpc://127.0.0.1:$XF_PORT;
+    grpc_set_header Host \$host;
+    grpc_set_header X-Real-IP \$remote_addr;
+    grpc_read_timeout 1h;
+    grpc_send_timeout 1h;
+    grpc_socket_keepalive on;
+    grpc_buffer_size 64k;
+    add_header Cache-Control \"no-store\" always;
+    access_log /var/log/nginx/vpsrouter-xhttp.log vpsr_xhttp;
+}"
+        fi
     else
         systemctl disable --now xray-xhttp >/dev/null 2>&1 || true
         SNIP="# managed by vps-router apply-router.sh — XHTTP disabled"

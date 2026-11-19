@@ -76,6 +76,8 @@ class DeviceInbounds
 
     /** XHTTP: Xray слушает loopback (за nginx), трафик отдаёт в sing-box через локальный SOCKS-мост. */
     public const XHTTP_LOCAL_PORT = 8446;
+    /** Отдельный Xray-inbound для фронта (CDN): свой путь, VLESS Encryption всегда. */
+    public const XHTTP_FRONT_LOCAL_PORT = 8447;
     public const XHTTP_BRIDGE_PORT = 10811;
     public const XHTTP_BRIDGE_TAG = 'xhttp-bridge';
     private const XMUX_DEFAULT_CONCURRENCY = '16-32';
@@ -355,6 +357,48 @@ class DeviceInbounds
         return self::vlessEncEnabled() && $pub ? 'mlkem768x25519plus.native.0rtt.' . $pub : 'none';
     }
 
+    /**
+     * Секретный путь входа через фронт — свой, отдельный от прямого XHTTP: за ним
+     * отдельный Xray-inbound, где VLESS Encryption включено всегда (фронт — третья
+     * сторона, снимает TLS). Прямой вход и выданные по нему ссылки не меняются.
+     * Выводится из пути и секрета панели — не хранится. '' — фронт не задан.
+     */
+    public static function frontPath(): string
+    {
+        $main = self::xhttpPath();
+        if (self::frontHost() === null || $main === '') {
+            return '';
+        }
+        $secret = (string) (App::config()['app_secret'] ?? '');
+        for ($i = 0; ; $i++) {
+            $p = '/' . substr(hash_hmac('sha256', "xhttp-front|$main|$i", $secret), 0, 16);
+            // location ^~ — префиксный: пути не должны быть префиксами друг друга.
+            if (!str_starts_with($p, $main) && !str_starts_with($main, $p)) {
+                return $p;
+            }
+        }
+    }
+
+    /** Серверная строка decryption для фронт-инбаунда ('' — ключей ещё нет). */
+    public static function frontDecryption(): string
+    {
+        $priv = self::cfg('inbound_xhttp_vlessenc_priv');
+        return $priv ? 'mlkem768x25519plus.native.600s.' . $priv : '';
+    }
+
+    /** Клиентская строка encryption для входа через фронт ('' — ключей ещё нет). */
+    public static function frontEncryption(): string
+    {
+        $pub = self::cfg('inbound_xhttp_vlessenc_pub');
+        return $pub ? 'mlkem768x25519plus.native.0rtt.' . $pub : '';
+    }
+
+    /** Вход через фронт готов: XHTTP работает, домен фронта задан, ключи шифрования есть. */
+    public static function frontReady(): bool
+    {
+        return self::xhttpReady() && self::frontPath() !== '' && self::frontDecryption() !== '' && self::frontEncryption() !== '';
+    }
+
     private static function b64url(string $raw): string
     {
         return rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
@@ -432,7 +476,11 @@ class DeviceInbounds
         if (!self::xhttpReady()) {
             return '';
         }
-        return 'PATH_PREFIX=' . self::xhttpPath() . "\nLOCAL_PORT=" . self::XHTTP_LOCAL_PORT . "\n";
+        $env = 'PATH_PREFIX=' . self::xhttpPath() . "\nLOCAL_PORT=" . self::XHTTP_LOCAL_PORT . "\n";
+        if (self::frontReady()) {
+            $env .= 'FRONT_PATH=' . self::frontPath() . "\nFRONT_PORT=" . self::XHTTP_FRONT_LOCAL_PORT . "\n";
+        }
+        return $env;
     }
 
     public static function publicHost(): ?string
@@ -750,20 +798,22 @@ class DeviceInbounds
                     }
                     // Через фронт: подключаемся к CDN-домену, режим packet-up (кэш-CDN буферизует тело — stream-up не выживает).
                     $front = self::$frontBuild;
-                    if ($front && self::frontHost() === null) {
+                    if ($front && !self::frontReady()) {
                         break;
                     }
                     $xh = $front ? self::frontHost() : self::xhttpHost();
                     $xmode = $front ? 'packet-up' : self::xhttpMode();
+                    $xpath = $front ? self::frontPath() : self::xhttpPath();
+                    $xenc = $front ? self::frontEncryption() : self::vlessEncryption();
                     $q = [
-                        'encryption' => self::vlessEncryption(),
+                        'encryption' => $xenc,
                         'security' => 'tls',
                         'sni' => $xh,
                         'fp' => 'edge', // как у Reality: hello в один сегмент
                         'alpn' => 'h2',
                         'type' => 'xhttp',
                         'host' => $xh,
-                        'path' => self::xhttpPath(),
+                        'path' => $xpath,
                         'mode' => $xmode,
                     ];
                     $extra = $front ? self::frontExtra() : self::xhttpExtra();
@@ -775,7 +825,7 @@ class DeviceInbounds
                     $out[$protocol] = self::entry($label, $uri, null, "$safe-xhttp.txt");
                     // Для Android-приложения: outbound ядра Xray (sing-box XHTTP не умеет).
                     // Признак Xray-формата — ключ "protocol" (у sing-box — "type").
-                    $xs = ['host' => $xh, 'path' => self::xhttpPath(), 'mode' => $xmode];
+                    $xs = ['host' => $xh, 'path' => $xpath, 'mode' => $xmode];
                     if ($extra) {
                         $xs['extra'] = $extra;
                     }
@@ -784,7 +834,7 @@ class DeviceInbounds
                         'settings' => ['vnext' => [[
                             'address' => $via ? $host : $xh,
                             'port' => $port,
-                            'users' => [['id' => $client['uuid'], 'encryption' => self::vlessEncryption()]],
+                            'users' => [['id' => $client['uuid'], 'encryption' => $xenc]],
                         ]]],
                         'streamSettings' => [
                             'network' => 'xhttp',

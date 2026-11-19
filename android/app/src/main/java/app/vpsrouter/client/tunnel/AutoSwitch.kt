@@ -53,10 +53,13 @@ object AutoSwitch {
     /**
      * Следующий тип для перехода: из того же сервера, кроме текущего и тех, что
      * недавно не работали. Сначала — те, что выше по лестнице, чем текущий; потом с начала.
+     * Вход через CDN — только если он разрешён в настройках ([allowFront]).
      */
-    fun next(items: List<TunnelProfile>, current: TunnelProfile, failedAt: Map<String, Long>, now: Long): TunnelProfile? {
+    fun next(items: List<TunnelProfile>, current: TunnelProfile, failedAt: Map<String, Long>, now: Long, allowFront: Boolean = false): TunnelProfile? {
         val cmp = compareBy<TunnelProfile>({ level(it).first }, { level(it).second }, { level(it).third })
-        val ok = items.filter { it.id != current.id && (failedAt[it.id]?.let { t -> now - t >= COOLDOWN_MS } ?: true) }.sortedWith(cmp)
+        val ok = items.filter {
+            it.id != current.id && (allowFront || !isFront(it)) && (failedAt[it.id]?.let { t -> now - t >= COOLDOWN_MS } ?: true)
+        }.sortedWith(cmp)
         return ok.firstOrNull { cmp.compare(it, current) > 0 } ?: ok.firstOrNull()
     }
 

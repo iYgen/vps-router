@@ -47,9 +47,18 @@ class AutoSwitchTest {
         // С любого типа фронт идёт после всех прочих.
         val now = 2_000_000L
         val failed = mutableMapOf(reality.id to now, awg.id to now, xhttp.id to now, ss.id to now)
-        assertEquals(xhttpFront, AutoSwitch.next(items, ss, failed, now))
+        assertEquals(xhttpFront, AutoSwitch.next(items, ss, failed, now, allowFront = true))
         // Фронт не предлагается, пока есть неиспробованный прямой вариант.
-        assertEquals(false, AutoSwitch.isFront(AutoSwitch.next(items, reality, mapOf(reality.id to now), now)!!))
+        assertEquals(false, AutoSwitch.isFront(AutoSwitch.next(items, reality, mapOf(reality.id to now), now, allowFront = true)!!))
+    }
+
+    @Test fun frontOnlyWhenEnabledInSettings() {
+        val items = listOf(xhttpFront, ss, reality)
+        val now = 2_000_000L
+        val failed = mutableMapOf(reality.id to now, ss.id to now)
+        // Настройка «Резервный вход через CDN» выключена — на фронт не переходим.
+        assertNull(AutoSwitch.next(items, ss, failed, now))
+        assertEquals(xhttpFront, AutoSwitch.next(items, ss, failed, now, allowFront = true))
     }
 
     @Test fun startsFromAnyLevelAndWrapsAround() {

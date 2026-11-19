@@ -166,7 +166,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                     val now = System.currentTimeMillis()
                     failedAt[profile.id] = now
                     val group = app.vpsrouter.client.ui.connectionGroups(repo.data.value).firstOrNull { g -> g.items.any { it.id == profile.id } }
-                    val next = group?.let { AutoSwitch.next(it.items, profile, failedAt, now) }
+                    val next = group?.let { AutoSwitch.next(it.items, profile, failedAt, now, repo.data.value.settings.cdnFront) }
                     if (next != null) {
                         val note = "«${AutoSwitch.label(profile)}» не запустился → «${AutoSwitch.label(next)}»"
                         AppLog.i("Автовыбор: $note")
@@ -293,7 +293,7 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
 
                 val now = System.currentTimeMillis()
                 failedAt[profile.id] = now
-                val next = AutoSwitch.next(group.items, profile, failedAt, now)
+                val next = AutoSwitch.next(group.items, profile, failedAt, now, settings.cdnFront)
                 if (next == null) {
                     val msg = "Ни один тип соединения сервера не работает в этой сети — пробую снова через 2 мин"
                     AppLog.e("Автовыбор: $msg")

@@ -263,6 +263,8 @@ class DeviceInboundsTest extends TestCase
             // Без фронт-домена варианта «через фронт» нет.
             Setting::set('inbound_xhttp_front', '');
             $this->assertArrayNotHasKey('xhttp@front', DeviceInbounds::allConfigs($client));
+            $this->assertStringNotContainsString('FRONT_PATH', DeviceInbounds::xhttpEnv());
+            $this->assertCount(1, \App\Singbox\XrayXhttpBuilder::build(Client::active())['inbounds']);
 
             DeviceInbounds::saveXhttpSettings(['host' => 'site.example.com', 'path' => '/abcdef12', 'front' => 'cdn.example.com', 'profile' => 'classic']);
             $all = DeviceInbounds::allConfigs($client);
@@ -285,8 +287,23 @@ class DeviceInboundsTest extends TestCase
             $this->assertSame(4096, $fx['scMaxEachPostBytes']);
             $this->assertStringContainsString('uplinkHTTPMethod', rawurldecode($all['xhttp@front']['uri']));
             $this->assertArrayNotHasKey('uplinkHTTPMethod', $direct['xhttpSettings']['extra'] ?? []);
-            // Путь и UUID — те же, сервер один (старые прямые ссылки продолжают работать).
-            $this->assertSame($all['xhttp']['outbound']['streamSettings']['xhttpSettings']['path'], $front['xhttpSettings']['path']);
+            // У фронта свой путь (отдельный inbound), прямой путь не меняется.
+            $this->assertSame('/abcdef12', $direct['xhttpSettings']['path']);
+            $fp = $front['xhttpSettings']['path'];
+            $this->assertSame(DeviceInbounds::frontPath(), $fp);
+            $this->assertMatchesRegularExpression('#^/[0-9a-f]{16}$#', $fp);
+            $this->assertFalse(str_starts_with($fp, '/abcdef12'));
+            // Фронт всегда с VLESS Encryption, прямой — как был (без явного включения — none).
+            $this->assertSame('none', $all['xhttp']['outbound']['settings']['vnext'][0]['users'][0]['encryption']);
+            $this->assertStringStartsWith('mlkem768x25519plus.native.0rtt.', $all['xhttp@front']['outbound']['settings']['vnext'][0]['users'][0]['encryption']);
+            // Сервер: второй inbound на своём порту с decryption, env для nginx.
+            $xray = \App\Singbox\XrayXhttpBuilder::build(Client::active());
+            $this->assertCount(2, $xray['inbounds']);
+            $this->assertSame('none', $xray['inbounds'][0]['settings']['decryption']);
+            $this->assertSame(DeviceInbounds::XHTTP_FRONT_LOCAL_PORT, $xray['inbounds'][1]['port']);
+            $this->assertSame($fp, $xray['inbounds'][1]['streamSettings']['xhttpSettings']['path']);
+            $this->assertStringStartsWith('mlkem768x25519plus.native.600s.', $xray['inbounds'][1]['settings']['decryption']);
+            $this->assertStringContainsString("FRONT_PATH=$fp\nFRONT_PORT=8447", DeviceInbounds::xhttpEnv());
 
             $this->assertSame(['xhttp', 'front'], DeviceInbounds::parseConfigKey('xhttp@front'));
         } finally {

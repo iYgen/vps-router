@@ -119,6 +119,9 @@ fun SettingsScreen(nav: NavController) {
                 SettingRow("Автовыбор протокола", "Если тип соединения заблокирован или «замораживается», перейти на следующий тип того же сервера") {
                     Switch(s.autoSwitch, { v -> app.repo.update { it.copy(settings = it.settings.copy(autoSwitch = v)) } }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.accent))
                 }
+                SettingRow("Резервный вход через CDN", "Если прямые типы заблокированы (мобильная сеть), автовыбор переходит на вход через CDN. Трафик через CDN платный") {
+                    Switch(s.cdnFront, { v -> app.repo.update { it.copy(settings = it.settings.copy(cdnFront = v)) } }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.accent))
+                }
                 val toggleSpeed = rememberSpeedToggle()
                 SettingRow("Скорость у камеры", "Входящая и исходящая скорость VPN в строке состояния") {
                     Switch(s.speedInStatusBar, { toggleSpeed() }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.accent))
