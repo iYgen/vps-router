@@ -195,6 +195,12 @@ data class AppSettings(
     val mtu: Int = 0,
     /** Список для «Только выбранные приложения» (отдельно от «Всё, кроме…»); null — старые версии хранили его в apps. */
     val onlyApps: List<String>? = null,
+    /** «Только РФ»: эти приложения никогда не ходят через VPN-сервер (см. tunnel/RfOnly). */
+    val rfOnlyApps: List<String> = emptyList(),
+    /** false — наблюдение (зарубежное пропускается напрямую и пишется в журнал), true — зарубежное блокируется. */
+    val rfOnlyBlock: Boolean = false,
+    /** Разрешённые для «только РФ»-приложений зарубежные адреса: домены (с поддоменами) и IP/подсети. */
+    val rfOnlyAllow: List<String> = emptyList(),
 )
 
 /** Приложения, которые идут через VPN в режиме ONLY_APPS. */

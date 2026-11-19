@@ -54,6 +54,8 @@ class BoxConfigTest {
         val dir = File("build/box-samples").apply { mkdirs() }
         File(dir, "vless.json").writeText(BoxConfig.build(vless, AppSettings(hiddenApps = listOf("ru.mos.mesh"))))
         File(dir, "hy2.json").writeText(BoxConfig.build(hy2, AppSettings()))
+        File(dir, "rf-ip.json").writeText(RfOnly.sourceRuleSet(File("src/main/assets/rfonly/ru-ip.txt").readText()))
+        File(dir, "rfonly.json").writeText(BoxConfig.build(vless, AppSettings(rfOnlyApps = listOf("ru.ozon.app.android"), rfOnlyBlock = true, rfOnlyAllow = listOf("appsflyersdk.com", "3.174.113.99")), rfRuleSetPath = File(dir, "rf-ip.json").absolutePath))
         assertTrue(parse(File(dir, "hy2.json").readText()) is JsonObject)
     }
 }

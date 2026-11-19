@@ -123,6 +123,8 @@ fun AppRoot(activity: MainActivity) {
             composable("add") { AddScreen(nav) }
             composable("apps") { AppPickerScreen(nav) }
             composable("apps/hidden") { AppPickerScreen(nav, hidden = true) }
+            composable("apps/rfonly") { AppPickerScreen(nav, rfOnly = true) }
+            composable("rfonly") { RfOnlyScreen(nav) }
             composable("diagnostics") { DiagnosticsScreen(nav) }
             composable("log") { LogScreen(nav) }
             composable("tunnel/{id}") { TunnelDetailScreen(it.arguments?.getString("id").orEmpty(), nav) }

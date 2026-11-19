@@ -51,13 +51,20 @@ object BoxConfig {
         return json.encodeToString(JsonObject.serializer(), cfg)
     }
 
-    fun build(outboundJson: String, s: AppSettings, dnsOverride: String = s.dnsOverride, xray: XrayBridge? = null, ownPackage: String? = null): String {
+    /**
+     * @param rfRuleSetPath файл rule-set'а российских подсетей (RfOnly.ruleSetFile); null — «Только РФ» не применяется
+     */
+    fun build(outboundJson: String, s: AppSettings, dnsOverride: String = s.dnsOverride, xray: XrayBridge? = null, ownPackage: String? = null, rfRuleSetPath: String? = null): String {
         val outbound = if (xray != null) buildJsonObject {
             // Трафик из TUN — в локальный вход Xray, наружу его ведёт уже Xray (XHTTP).
             put("type", "socks"); put("tag", "proxy"); put("server", "127.0.0.1"); put("server_port", xray.port)
             put("version", "5"); put("username", xray.user); put("password", xray.pass)
         } else JsonObject(Json.parseToJsonElement(outboundJson).jsonObject + ("tag" to JsonPrimitive("proxy")))
-        val (included, excludedBase) = ConfigTransform.appLists(s)
+        val (includedBase, excludedRaw) = ConfigTransform.appLists(s)
+        // «Только РФ»-приложения должны попадать в TUN, иначе правила к ним не применить.
+        val rfApps = if (rfRuleSetPath != null) RfOnly.apps(s) else emptyList()
+        val included = if (includedBase.isNotEmpty()) (includedBase + rfApps).distinct() else includedBase
+        val excludedBase = excludedRaw.filterNot { it in rfApps && it !in s.hiddenApps }
         // Сокеты Xray не умеют protect(), поэтому само приложение выводим из туннеля.
         val excluded = if (xray != null && ownPackage != null && included.isEmpty()) (excludedBase + ownPackage).distinct() else excludedBase
         val dns = dnsOverride.split(',', ' ').map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "1.1.1.1"
@@ -97,12 +104,19 @@ object BoxConfig {
             putJsonArray("outbounds") {
                 add(outbound)
                 add(buildJsonObject { put("type", "direct"); put("tag", "direct") })
+                if (rfApps.isNotEmpty()) RfOnly.outbounds().forEach { add(it) }
             }
             putJsonObject("route") {
                 putJsonArray("rules") {
                     add(buildJsonObject { put("action", "sniff") })
                     add(buildJsonObject { put("protocol", "dns"); put("action", "hijack-dns") })
                     if (s.bypassLan) add(buildJsonObject { put("ip_is_private", true); put("outbound", "direct") })
+                    if (rfApps.isNotEmpty()) RfOnly.rules(s).forEach { add(it) }
+                }
+                if (rfApps.isNotEmpty()) {
+                    putJsonArray("rule_set") { add(RfOnly.ruleSetDef(rfRuleSetPath!!)) }
+                    // Нужен, чтобы ядро знало приложение у соединения (package_name + журнал).
+                    put("find_process", true)
                 }
                 put("final", "proxy")
                 put("auto_detect_interface", true)

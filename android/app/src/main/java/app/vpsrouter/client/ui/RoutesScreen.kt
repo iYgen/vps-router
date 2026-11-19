@@ -135,6 +135,17 @@ fun RoutesScreen(nav: NavController) {
 
         item {
             SectionCard {
+                Text("Только РФ для приложений", fontWeight = FontWeight.SemiBold)
+                Muted("Российские приложения (Ozon, банки, МЭШ…) никогда не ходят через VPN-сервер; зарубежные адреса — наблюдать или блокировать. Журнал: куда ходит каждое приложение.")
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(onClick = { nav.navigate("rfonly") }) {
+                    Text(if (s.rfOnlyApps.isEmpty()) "Настроить" else "Приложений: ${s.rfOnlyApps.size} · " + if (s.rfOnlyBlock) "запрет" else "наблюдение")
+                }
+            }
+        }
+
+        item {
+            SectionCard {
                 Text("Скрыть VPN от приложений", fontWeight = FontWeight.SemiBold)
                 Muted("МЭШ, банки, Госуслуги проверяют, включён ли VPN. Отмеченные приложения всегда идут напрямую и VPN не замечают — при любом режиме выше.")
                 Spacer(Modifier.height(6.dp))
@@ -226,15 +237,15 @@ private data class AppInfo(val pkg: String, val label: String, val icon: Drawabl
 
 /** Выбор приложений для профилей «Всё, кроме…» / «Только…». */
 @Composable
-fun AppPickerScreen(nav: NavController, hidden: Boolean = false) {
+fun AppPickerScreen(nav: NavController, hidden: Boolean = false, rfOnly: Boolean = false) {
     val app = App.instance
     val ctx = LocalContext.current
     val data by app.repo.data.collectAsState()
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<AppInfo>?>(null) }
     var query by remember { mutableStateOf("") }
-    val only = !hidden && data.settings.routeMode == RouteMode.ONLY_APPS
-    var selected by remember { mutableStateOf((if (hidden) data.settings.hiddenApps else if (only) data.settings.viaApps else data.settings.apps).toSet()) }
+    val only = !hidden && !rfOnly && data.settings.routeMode == RouteMode.ONLY_APPS
+    var selected by remember { mutableStateOf((if (rfOnly) data.settings.rfOnlyApps else if (hidden) data.settings.hiddenApps else if (only) data.settings.viaApps else data.settings.apps).toSet()) }
 
     LaunchedEffect(Unit) {
         apps = withContext(Dispatchers.IO) {
@@ -249,11 +260,12 @@ fun AppPickerScreen(nav: NavController, hidden: Boolean = false) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        BackBar(if (hidden) "Скрыть VPN от" else if (only) "Только через VPN" else "Напрямую, мимо VPN", nav) {
+        BackBar(if (rfOnly) "Только РФ" else if (hidden) "Скрыть VPN от" else if (only) "Только через VPN" else "Напрямую, мимо VPN", nav) {
             TextButton(onClick = {
                 scope.launch {
                     applySettings {
                         when {
+                            rfOnly -> it.copy(rfOnlyApps = selected.sorted())
                             hidden -> it.copy(hiddenApps = selected.sorted())
                             only -> it.copy(onlyApps = selected.sorted())
                             // Старый общий список становится списком «только выбранные», чтобы он не потерялся.
@@ -269,10 +281,10 @@ fun AppPickerScreen(nav: NavController, hidden: Boolean = false) {
         if (list == null) Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         else {
             val q = query.trim().lowercase()
-            val suggested = if (hidden) list.filter { RuApps.isLikely(it.pkg, it.label) }.map { it.pkg }.toSet() else emptySet()
+            val suggested = if (hidden || rfOnly) list.filter { RuApps.isLikely(it.pkg, it.label) }.map { it.pkg }.toSet() else emptySet()
             val shown = list.filter { q.isEmpty() || it.label.lowercase().contains(q) || it.pkg.contains(q) }
                 .sortedWith(compareByDescending<AppInfo> { it.pkg in selected }.thenByDescending { it.pkg in suggested })
-            if (hidden && suggested.any { it !in selected }) TextButton(onClick = { selected = selected + suggested }, modifier = Modifier.padding(horizontal = 8.dp)) {
+            if ((hidden || rfOnly) && suggested.any { it !in selected }) TextButton(onClick = { selected = selected + suggested }, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text("Отметить российские приложения (${suggested.count { it !in selected }})")
             }
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
@@ -288,7 +300,7 @@ fun AppPickerScreen(nav: NavController, hidden: Boolean = false) {
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(a.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(if (a.pkg in suggested) "${a.pkg} · обычно проверяет VPN" else a.pkg, fontSize = 11.sp, color = if (a.pkg in suggested) Pal.warn else Pal.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(if (a.pkg in suggested) "${a.pkg} · " + (if (rfOnly) "российское приложение" else "обычно проверяет VPN") else a.pkg, fontSize = 11.sp, color = if (a.pkg in suggested) Pal.warn else Pal.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Checkbox(on, { selected = if (on) selected - a.pkg else selected + a.pkg })
                     }

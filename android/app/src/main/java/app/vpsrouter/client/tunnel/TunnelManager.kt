@@ -116,7 +116,8 @@ class TunnelManager(private val context: Context, private val repo: Repository) 
                         user = java.util.UUID.randomUUID().toString(), pass = java.util.UUID.randomUUID().toString(),
                     ) else null
                     val xcfg = bridge?.let { BoxConfig.xrayConfig(profile.config, it) }
-                    val cfg = BoxConfig.build(profile.config, settings, xray = bridge, ownPackage = context.packageName)
+                    val rfPath = if (RfOnly.apps(settings).isNotEmpty()) RfOnly.ruleSetFile(context).path else null
+                    val cfg = BoxConfig.build(profile.config, settings, xray = bridge, ownPackage = context.packageName, rfRuleSetPath = rfPath)
                     BoxVpnService.check(context, cfg)
                     xcfg?.let { io.nekohasekai.xraylite.Xraylite.check(it) }
                     // Сначала гасим AmneziaWG, если он был активен.

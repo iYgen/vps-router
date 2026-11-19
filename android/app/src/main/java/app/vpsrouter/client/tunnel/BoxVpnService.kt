@@ -87,6 +87,8 @@ class BoxVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         server = s
         s.start()
         s.startOrReloadService(config, OverrideOptions())
+        // Журнал «Только РФ»: собираем соединения отмеченных приложений.
+        if (config.contains("\"${RfOnly.TAG_RU}\"")) AppTrafficLog.start(this)
     }
 
     fun stopBox() {
@@ -95,6 +97,7 @@ class BoxVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     }
 
     private fun closeAll() {
+        AppTrafficLog.stop()
         server?.let { s ->
             runCatching { s.closeService() }
             runCatching { s.close() }
@@ -219,8 +222,26 @@ class BoxVpnService : VpnService(), PlatformInterface, CommandServerHandler {
     override fun registerMyInterface(name: String?) {}
     override fun readWIFIState(): WIFIState = WIFIState("", "")
     override fun localDNSTransport(): LocalDNSTransport? = null
-    override fun findConnectionOwner(p0: Int, p1: String?, p2: Int, p3: String?, p4: Int): ConnectionOwner =
-        throw Exception("не поддерживается")
+    /**
+     * Чьё соединение (для правил package_name и журнала «Только РФ»). Android 10+ отдаёт
+     * владельца сокета только VPN-приложению — нам как раз можно.
+     */
+    override fun findConnectionOwner(ipProtocol: Int, srcAddr: String?, srcPort: Int, dstAddr: String?, dstPort: Int): ConnectionOwner {
+        if (Build.VERSION.SDK_INT < 29) throw Exception("нужен Android 10+")
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val uid = cm.getConnectionOwnerUid(
+            ipProtocol,
+            java.net.InetSocketAddress(java.net.InetAddress.getByName(srcAddr), srcPort),
+            java.net.InetSocketAddress(java.net.InetAddress.getByName(dstAddr), dstPort),
+        )
+        if (uid < 0) throw Exception("владелец не найден")
+        val pkgs = packageManager.getPackagesForUid(uid)?.toList().orEmpty()
+        return ConnectionOwner().apply {
+            userId = uid
+            userName = pkgs.firstOrNull() ?: ""
+            setAndroidPackageNames(strings(pkgs))
+        }
+    }
     override fun sendNotification(n: Notification?) {}
     override fun cancelNotification(id: String?, type: Int) {}
     override fun startNeighborMonitor(l: NeighborUpdateListener?) {}
