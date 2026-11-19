@@ -201,6 +201,13 @@ data class AppSettings(
     val rfOnlyBlock: Boolean = false,
     /** Разрешённые для «только РФ»-приложений зарубежные адреса: домены (с поддоменами) и IP/подсети. */
     val rfOnlyAllow: List<String> = emptyList(),
+    /**
+     * «Российские сайты мимо VPN» для всех приложений: зоны .ru/.su/.рф, российские подсети и
+     * сервисы проверки IP идут напрямую с телефона — адрес VPN-сервера им не виден.
+     */
+    val ruDirect: Boolean = true,
+    /** Исключения из ruDirect: эти домены (с поддоменами) всё равно идут через VPN. */
+    val ruDirectExcept: List<String> = emptyList(),
 )
 
 /** Приложения, которые идут через VPN в режиме ONLY_APPS. */

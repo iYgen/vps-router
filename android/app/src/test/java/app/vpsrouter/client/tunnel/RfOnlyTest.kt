@@ -21,7 +21,7 @@ class RfOnlyTest {
     private val ozon = "ru.ozon.app.android"
 
     @Test fun noAppsNoRules() {
-        val c = parse(BoxConfig.build(vless, AppSettings(), rfRuleSetPath = "/x.json"))
+        val c = parse(BoxConfig.build(vless, AppSettings(ruDirect = false), rfRuleSetPath = "/x.json"))
         assertNull(c["route"]!!.jsonObject["rule_set"])
         assertFalse(c.toString().contains("rfo-"))
     }
@@ -61,7 +61,7 @@ class RfOnlyTest {
         val tun2 = parse(BoxConfig.build(vless, s2, rfRuleSetPath = "/x.json"))["inbounds"]!!.jsonArray[0].jsonObject
         assertEquals(listOf("org.browser", ozon), (tun2["include_package"] as JsonArray).map { it.jsonPrimitive.content })
         // Скрытые от VPN — остаются снаружи, правило к ним не применяется.
-        val s3 = AppSettings(hiddenApps = listOf(ozon), rfOnlyApps = listOf(ozon))
+        val s3 = AppSettings(hiddenApps = listOf(ozon), rfOnlyApps = listOf(ozon), ruDirect = false)
         assertFalse(BoxConfig.build(vless, s3, rfRuleSetPath = "/x.json").contains("rfo-"))
     }
 
@@ -72,6 +72,26 @@ class RfOnlyTest {
         assertTrue(cidrs.size > 5000)
         assertTrue(cidrs.all { '/' in it })
         assertTrue(cidrs.none { it.startsWith("#") })
+    }
+
+    @Test fun ruDirectForAllApps() {
+        val s = AppSettings(ruDirectExcept = listOf("Blocked-Media.ru"))
+        val route = parse(BoxConfig.build(vless, s, rfRuleSetPath = "/x.json"))["route"]!!.jsonObject
+        assertEquals("rfo-ru-ip", route["rule_set"]!!.jsonArray[0].jsonObject["tag"]!!.jsonPrimitive.content)
+        assertNull(route["find_process"]) // по приложениям не разбираем — дешевле
+        val rules = route["rules"]!!.jsonArray.map { it.jsonObject }
+        val ex = rules.first { it["outbound"]?.jsonPrimitive?.content == "proxy" }
+        assertEquals(listOf("blocked-media.ru"), ex["domain_suffix"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val direct = rules.last()
+        assertEquals("direct", direct["outbound"]!!.jsonPrimitive.content)
+        val doms = direct["domain_suffix"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertTrue("ru" in doms && "ipwho.is" in doms && "mos.ru" in doms)
+        assertTrue(rules.indexOf(ex) < rules.indexOf(direct))
+        // «Только РФ» по приложениям — раньше общего правила.
+        val both = parse(BoxConfig.build(vless, AppSettings(rfOnlyApps = listOf(ozon)), rfRuleSetPath = "/x.json"))["route"]!!.jsonObject["rules"]!!.jsonArray.map { it.jsonObject }
+        assertTrue(both.indexOfFirst { it.containsKey("package_name") } < both.indexOfLast { it["outbound"]?.jsonPrimitive?.content == "direct" })
+        // Без файла с подсетями правило не ставится.
+        assertFalse(BoxConfig.build(vless, AppSettings()).contains("rfo-ru-ip"))
     }
 
     @Test fun allowKeyAndVerdicts() {

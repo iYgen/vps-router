@@ -143,6 +143,28 @@ object RfOnly {
         return out
     }
 
+    /** Нужен ли rule-set российских подсетей (хоть одно из правил включено). */
+    fun needsRuleSet(s: AppSettings) = s.ruDirect || apps(s).isNotEmpty()
+
+    /**
+     * «Российские сайты мимо VPN» для всех приложений в туннеле (после правил «Только РФ»):
+     * исключения — через VPN, российское и проверки IP — напрямую.
+     */
+    fun ruDirectRules(s: AppSettings): List<JsonObject> {
+        if (!s.ruDirect) return emptyList()
+        val out = mutableListOf<JsonObject>()
+        val except = s.ruDirectExcept.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
+        if (except.isNotEmpty()) out += buildJsonObject {
+            put("domain_suffix", JsonArray(except.map(::JsonPrimitive))); put("outbound", "proxy")
+        }
+        out += buildJsonObject {
+            put("domain_suffix", JsonArray((RU_ZONES + RU_DOMAINS + IP_CHECK_DOMAINS).map(::JsonPrimitive)))
+            put("rule_set", JsonArray(listOf(JsonPrimitive(RULE_SET))))
+            put("outbound", "direct")
+        }
+        return out
+    }
+
     /** Что журнал покажет по тегу outbound'а. */
     enum class Verdict(val label: String) {
         RU("Россия, напрямую"), ALLOWED("Разрешено, напрямую"), FOREIGN("Зарубежный, пропущен"), BLOCKED("Зарубежный, заблокирован");

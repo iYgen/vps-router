@@ -112,12 +112,13 @@ object BoxConfig {
                     add(buildJsonObject { put("protocol", "dns"); put("action", "hijack-dns") })
                     if (s.bypassLan) add(buildJsonObject { put("ip_is_private", true); put("outbound", "direct") })
                     if (rfApps.isNotEmpty()) RfOnly.rules(s).forEach { add(it) }
+                    if (rfRuleSetPath != null) RfOnly.ruDirectRules(s).forEach { add(it) }
                 }
-                if (rfApps.isNotEmpty()) {
-                    putJsonArray("rule_set") { add(RfOnly.ruleSetDef(rfRuleSetPath!!)) }
-                    // Нужен, чтобы ядро знало приложение у соединения (package_name + журнал).
-                    put("find_process", true)
+                if (rfRuleSetPath != null && (rfApps.isNotEmpty() || s.ruDirect)) {
+                    putJsonArray("rule_set") { add(RfOnly.ruleSetDef(rfRuleSetPath)) }
                 }
+                // Нужен, чтобы ядро знало приложение у соединения (package_name + журнал).
+                if (rfApps.isNotEmpty()) put("find_process", true)
                 put("final", "proxy")
                 put("auto_detect_interface", true)
                 put("default_domain_resolver", "local")

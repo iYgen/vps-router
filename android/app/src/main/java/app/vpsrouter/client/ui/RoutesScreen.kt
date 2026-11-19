@@ -79,6 +79,7 @@ fun RoutesScreen(nav: NavController) {
     var query by remember { mutableStateOf("") }
     var addDomainTo by remember { mutableStateOf<PanelRoute?>(null) }
     var expanded by remember { mutableStateOf(setOf<Int>()) }
+    var editExcept by remember { mutableStateOf(false) }
     val online = panelState == PanelState.ONLINE
 
     fun act(label: String, block: suspend () -> Unit) = scope.launch {
@@ -129,6 +130,21 @@ fun RoutesScreen(nav: NavController) {
                         Muted("Роутер, принтер, NAS (192.168.x.x, 10.x.x.x) доступны при включённом VPN")
                     }
                     Switch(s.bypassLan, { v -> scope.launch { applySettings { it.copy(bypassLan = v) } } }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.accent))
+                }
+            }
+        }
+
+        item {
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Российские сайты мимо VPN", fontWeight = FontWeight.SemiBold)
+                        Muted("Сайты .ru/.su/.рф, российские адреса и сервисы проверки IP открываются напрямую с телефона: адрес VPN-сервера им не виден, а приложения видят ваш обычный IP. Работает с соединениями sing-box.")
+                    }
+                    Switch(s.ruDirect, { v -> scope.launch { applySettings { it.copy(ruDirect = v) } } }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.accent))
+                }
+                if (s.ruDirect) TextButton(onClick = { editExcept = true }) {
+                    Text(if (s.ruDirectExcept.isEmpty()) "Исключения: всё равно через VPN" else "Через VPN всё равно: ${s.ruDirectExcept.size}")
                 }
             }
         }
@@ -213,6 +229,29 @@ fun RoutesScreen(nav: NavController) {
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+
+    if (editExcept) {
+        var text by remember { mutableStateOf(s.ruDirectExcept.joinToString("\n")) }
+        AlertDialog(
+            onDismissRequest = { editExcept = false },
+            title = { Text("Через VPN всё равно") },
+            text = {
+                Column {
+                    Field(text, { text = it }, "Домены, по одному в строке", singleLine = false, minLines = 4, placeholder = "example.ru")
+                    Muted("Российские сайты, которые заблокированы у провайдера или должны видеть адрес сервера. Поддомены включаются.")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val list = text.split('\n', ',', ' ').map { it.trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/') }
+                        .filter { Regex("""^([a-z0-9-]+\.)+[a-z0-9-]{2,}$""").matches(it) }.distinct()
+                    editExcept = false
+                    scope.launch { applySettings { it.copy(ruDirectExcept = list) } }
+                }) { Text("Сохранить") }
+            },
+            dismissButton = { TextButton(onClick = { editExcept = false }) { Text("Отмена") } },
+        )
     }
 
     addDomainTo?.let { r ->
