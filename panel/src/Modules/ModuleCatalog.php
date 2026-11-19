@@ -128,6 +128,15 @@ class ModuleCatalog
                 'description' => 'A dedicated proxy for the Telegram messenger on a chosen node: MTProto (mtg, with FakeTLS) and/or SOCKS5 (via sing-box). Managed from the server inspector: enable/disable, port, secret regeneration, ready-made tg:// link and QR. Without this module the "Telegram proxy" tab is hidden.',
                 'provides' => ['features' => ['tg-proxy']],
             ],
+            [
+                'id' => 'feature-rf-only',
+                'name' => 'Local-only destinations',
+                'version' => '1.0.0',
+                'type' => 'feature',
+                'default_active' => false,
+                'description' => 'Forces chosen destinations to always leave directly from the entry server, never through an exit: (1) IP-geolocation and VPN-detection services (ipwho.is, ipinfo.io, ip-api.com…) so apps see the local address, and (2) a curated list of local services (domains + subnets). Rules are placed before all route groups. Managed on the Settings page.',
+                'provides' => ['features' => ['rf-only']],
+            ],
         ];
     }
 }

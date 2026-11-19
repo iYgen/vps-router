@@ -238,6 +238,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             AuditLog::record('settings.norf', 'on=' . (!empty($_POST['no_rf_enabled']) ? '1' : '0') . ' domains=' . count($domains) . " (router=$routerId)");
             $result = (new Applier())->apply(Auth::username() ?? 'system', 'сайты без российского IP', $routerId);
             View::applyResultFlash($result);
+        } elseif ($action === 'save_rfonly' && \App\SingboxConfigBuilder::rfOnlyActive()) {
+            $sset('rf_only_ipcheck_enabled', !empty($_POST['rf_only_ipcheck_enabled']) ? '1' : '0');
+            $sset('rf_only_ru_enabled', !empty($_POST['rf_only_ru_enabled']) ? '1' : '0');
+            if (!empty($_POST['rf_only_reset'])) {
+                // Сброс к спискам по умолчанию: пустое значение настройки = встроенный список.
+                foreach (['rf_only_ipcheck_domains', 'rf_only_ru_domains', 'rf_only_ru_cidrs'] as $k) {
+                    $sset($k, \App\Singbox\RfOnlyGuard::DEFAULT_MARK);
+                }
+                $n = 'reset';
+            } else {
+                $ip = \App\Singbox\RfOnlyGuard::parseDomains((string) ($_POST['rf_only_ipcheck_domains'] ?? ''));
+                $dom = \App\Singbox\RfOnlyGuard::parseDomains((string) ($_POST['rf_only_ru_domains'] ?? ''));
+                $cidr = \App\Singbox\RfOnlyGuard::parseCidrs((string) ($_POST['rf_only_ru_cidrs'] ?? ''));
+                $sset('rf_only_ipcheck_domains', implode("\n", $ip));
+                $sset('rf_only_ru_domains', implode("\n", $dom));
+                $sset('rf_only_ru_cidrs', implode("\n", $cidr));
+                $n = 'ip=' . count($ip) . ' dom=' . count($dom) . ' cidr=' . count($cidr);
+            }
+            AuditLog::record('settings.rfonly', 'ipcheck=' . (!empty($_POST['rf_only_ipcheck_enabled']) ? '1' : '0') . ' ru=' . (!empty($_POST['rf_only_ru_enabled']) ? '1' : '0') . " $n (router=$routerId)");
+            $result = (new Applier())->apply(Auth::username() ?? 'system', 'только через РФ', $routerId);
+            View::applyResultFlash($result);
         } elseif ($action === 'save_privacy') {
             $on = !empty($_POST['external_checks_enabled']);
             Setting::set('external_checks_enabled', $on ? '1' : '0');

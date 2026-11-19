@@ -202,3 +202,38 @@ use App\RiskScanner;
     <button type="submit" style="margin-top:10px"><?= htmlspecialchars(t('common.save_apply')) ?></button>
   </form>
 </div>
+
+<?php if (\App\SingboxConfigBuilder::rfOnlyActive()):
+    $rfIp = $settings['rf_only_ipcheck_domains'] ?? null;
+    $rfDom = $settings['rf_only_ru_domains'] ?? null;
+    $rfCidr = $settings['rf_only_ru_cidrs'] ?? null;
+?>
+<div class="card">
+  <h2 style="margin-top:0"><?= htmlspecialchars(t('settings.rfonly.title')) ?></h2>
+  <p class="muted"><?= htmlspecialchars(t('settings.rfonly.desc')) ?></p>
+  <form method="post">
+    <?= Auth::csrfField() ?>
+    <input type="hidden" name="action" value="save_rfonly">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:500">
+      <input type="checkbox" name="rf_only_ipcheck_enabled" value="1" <?= ($settings['rf_only_ipcheck_enabled'] ?? '1') === '1' ? 'checked' : '' ?>>
+      <?= htmlspecialchars(t('settings.rfonly.ipcheck')) ?>
+    </label>
+    <textarea name="rf_only_ipcheck_domains" rows="8" style="width:100%;max-width:520px;font-family:monospace;margin-top:6px"><?= htmlspecialchars(implode("\n", \App\Singbox\RfOnlyGuard::isDefault($rfIp) ? \App\Singbox\RfOnlyGuard::IP_CHECK_DOMAINS : \App\Singbox\RfOnlyGuard::parseDomains($rfIp))) ?></textarea>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:500;margin-top:14px">
+      <input type="checkbox" name="rf_only_ru_enabled" value="1" <?= ($settings['rf_only_ru_enabled'] ?? '1') === '1' ? 'checked' : '' ?>>
+      <?= htmlspecialchars(t('settings.rfonly.ru')) ?>
+    </label>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">
+      <label style="flex:1;min-width:220px"><?= htmlspecialchars(t('settings.rfonly.domains')) ?><br>
+        <textarea name="rf_only_ru_domains" rows="10" style="width:100%;font-family:monospace"><?= htmlspecialchars(implode("\n", \App\Singbox\RfOnlyGuard::isDefault($rfDom) ? \App\Singbox\RfOnlyGuard::RU_DOMAINS : \App\Singbox\RfOnlyGuard::parseDomains($rfDom))) ?></textarea>
+      </label>
+      <label style="flex:1;min-width:220px"><?= htmlspecialchars(t('settings.rfonly.cidrs')) ?><br>
+        <textarea name="rf_only_ru_cidrs" rows="10" style="width:100%;font-family:monospace"><?= htmlspecialchars(implode("\n", \App\Singbox\RfOnlyGuard::isDefault($rfCidr) ? \App\Singbox\RfOnlyGuard::RU_CIDRS : \App\Singbox\RfOnlyGuard::parseCidrs($rfCidr))) ?></textarea>
+      </label>
+    </div>
+    <p class="muted" style="margin:6px 0 0"><?= htmlspecialchars(t('settings.rfonly.note')) ?></p>
+    <button type="submit" style="margin-top:10px"><?= htmlspecialchars(t('common.save_apply')) ?></button>
+    <button type="submit" name="rf_only_reset" value="1" style="margin-top:10px" class="secondary"><?= htmlspecialchars(t('settings.rfonly.reset')) ?></button>
+  </form>
+</div>
+<?php endif; ?>

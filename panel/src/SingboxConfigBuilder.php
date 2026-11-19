@@ -13,6 +13,7 @@ use App\Singbox\DnsBuilder;
 use App\Singbox\ExitOutboundBuilder;
 use App\Singbox\InboundsBuilder;
 use App\Singbox\NoRfGuard;
+use App\Singbox\RfOnlyGuard;
 use App\Singbox\RouteBuilder;
 use App\Singbox\RuleSetRegistry;
 
@@ -82,6 +83,36 @@ class SingboxConfigBuilder
     public static function noRfDomainsFor(?string $raw): array
     {
         return $raw === null ? NoRfGuard::DEFAULT_DOMAINS : NoRfGuard::parse($raw);
+    }
+
+    /** Модуль «Только через РФ» активен (см. RfOnlyGuard). */
+    public static function rfOnlyActive(): bool
+    {
+        return \App\Modules\ModuleManager::featureActive('rf-only');
+    }
+
+    /** @return string[] домены проверки IP (настройка или список по умолчанию), [] если выключено */
+    public static function rfOnlyIpCheckDomains(): array
+    {
+        if (self::setget('rf_only_ipcheck_enabled', '1') !== '1') {
+            return [];
+        }
+        $raw = self::setget('rf_only_ipcheck_domains', null);
+        return RfOnlyGuard::isDefault($raw) ? RfOnlyGuard::IP_CHECK_DOMAINS : RfOnlyGuard::parseDomains($raw);
+    }
+
+    /** @return array{domains:string[],cidrs:string[]} российские сервисы, пусто если выключено */
+    public static function rfOnlyRu(): array
+    {
+        if (self::setget('rf_only_ru_enabled', '1') !== '1') {
+            return ['domains' => [], 'cidrs' => []];
+        }
+        $d = self::setget('rf_only_ru_domains', null);
+        $c = self::setget('rf_only_ru_cidrs', null);
+        return [
+            'domains' => RfOnlyGuard::isDefault($d) ? RfOnlyGuard::RU_DOMAINS : RfOnlyGuard::parseDomains($d),
+            'cidrs' => RfOnlyGuard::isDefault($c) ? RfOnlyGuard::RU_CIDRS : RfOnlyGuard::parseCidrs($c),
+        ];
     }
 
     /** Блокировать QUIC (UDP 443) — по умолчанию да: убирает зависания YouTube через прокси. */
@@ -200,6 +231,18 @@ class SingboxConfigBuilder
         // «Без российского IP»: такие сайты не уходят напрямую с РФ-сервера (см. NoRfGuard).
         if (self::noRfEnabled()) {
             $routeRules = NoRfGuard::apply($routeRules, $groups, $exitServers, self::noRfDomains());
+        }
+
+        // «Только через РФ»: проверки IP и российские сервисы — всегда direct-rf,
+        // раньше любых групп/exit'ов (см. RfOnlyGuard).
+        if (self::rfOnlyActive()) {
+            $ru = self::rfOnlyRu();
+            $routeRules = RfOnlyGuard::apply(
+                $routeRules,
+                array_merge(self::rfOnlyIpCheckDomains(), $ru['domains']),
+                $ru['cidrs'],
+                self::noRfEnabled() ? self::noRfDomains() : []
+            );
         }
 
         // Inbound'ы устройств (VLESS/Reality + остальные протоколы).
