@@ -278,6 +278,13 @@ class DeviceInboundsTest extends TestCase
             $this->assertSame('packet-up', $front['xhttpSettings']['mode']);
             $this->assertStringContainsString('host=cdn.example.com', $all['xhttp@front']['uri']);
             $this->assertStringContainsString('mode=packet-up', $all['xhttp@front']['uri']);
+            // CDN пропускает только GET: отдача в заголовках, не больше 4 КБ на запрос.
+            $fx = $front['xhttpSettings']['extra'];
+            $this->assertSame('GET', $fx['uplinkHTTPMethod']);
+            $this->assertSame('header', $fx['uplinkDataPlacement']);
+            $this->assertSame(4096, $fx['scMaxEachPostBytes']);
+            $this->assertStringContainsString('uplinkHTTPMethod', rawurldecode($all['xhttp@front']['uri']));
+            $this->assertArrayNotHasKey('uplinkHTTPMethod', $direct['xhttpSettings']['extra'] ?? []);
             // Путь и UUID — те же, сервер один (старые прямые ссылки продолжают работать).
             $this->assertSame($all['xhttp']['outbound']['streamSettings']['xhttpSettings']['path'], $front['xhttpSettings']['path']);
 

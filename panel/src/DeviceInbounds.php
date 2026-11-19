@@ -308,6 +308,24 @@ class DeviceInbounds
     }
 
     /**
+     * `extra` для входа через фронт (CDN). Облачные CDN (замерено на Yandex Cloud CDN)
+     * пропускают только GET/HEAD: POST режется. Поэтому отдача идёт GET-запросами с
+     * данными в заголовках X-Data-N. Запрос — не больше 4 КБ данных: крупнее Xray-сервер
+     * отвечает 431 (заголовки ~10 КБ), а без лимита клиент кладёт в один запрос
+     * десятки КБ, и CDN отвечает 502/GOAWAY ENHANCE_YOUR_CALM. Отдача ~1 Мбит/с,
+     * загрузка — на полной скорости. Серверу настройка не нужна: он принимает любые.
+     */
+    public static function frontExtra(): array
+    {
+        return [
+            'uplinkHTTPMethod' => 'GET',
+            'uplinkDataPlacement' => 'header',
+            'uplinkChunkSize' => 1024,
+            'scMaxEachPostBytes' => 4096,
+        ];
+    }
+
+    /**
      * VLESS Encryption (ML-KEM-768 + X25519) внутри XHTTP: даже если TLS
      * снимет посредник (CDN, nginx-релей), поток остаётся зашифрован и не
      * похож на VLESS. Без явной настройки включено только на новых установках
@@ -748,7 +766,8 @@ class DeviceInbounds
                         'path' => self::xhttpPath(),
                         'mode' => $xmode,
                     ];
-                    if ($extra = self::xhttpExtra()) {
+                    $extra = $front ? self::frontExtra() : self::xhttpExtra();
+                    if ($extra) {
                         $q['extra'] = json_encode($extra, JSON_UNESCAPED_SLASHES);
                     }
                     $uri = 'vless://' . $client['uuid'] . '@' . self::uriHost($via ? $host : $xh) . ':' . $port . '?'
